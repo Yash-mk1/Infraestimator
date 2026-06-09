@@ -1,0 +1,106 @@
+{% extends 'scanner/base.html' %}
+{% load static %}
+ 
+{% block title %}Scan — InfraMonitor.io{% endblock %}
+ 
+{% block content %}
+ 
+<div class="analyse-body">
+ 
+  <div class="analyse-header">
+    <p class="analyse-step">// Step 01 — Select input method</p>
+    <h2 class="analyse-title">Scan your structure</h2>
+    <p class="analyse-sub">
+      Point your camera at the surface, or upload a photo.<br>
+      Our model will detect damage and generate a health report.
+    </p>
+    {% if error %}
+      <p class="error-msg">⚠ {{ error }}</p>
+    {% endif %}
+  </div>
+ 
+  <!-- Material selector -->
+  <div class="material-row">
+    <label class="material-label" for="materialSelect">Material type:</label>
+    <select class="material-select" id="materialSelect">
+      <option value="general">General</option>
+      <option value="concrete">Concrete</option>
+      <option value="brick">Brick / Masonry</option>
+      <option value="steel">Steel / Metal</option>
+      <option value="wood">Wood / Timber</option>
+      <option value="asphalt">Asphalt / Road</option>
+    </select>
+  </div>
+ 
+  <!-- Input boxes -->
+  <div class="input-grid">
+ 
+    <!-- Camera box -->
+    <div class="input-box" id="cameraBox" role="button" tabindex="0">
+      <div class="box-icon">📷</div>
+      <p class="box-num">Option 01</p>
+      <h3 class="box-title">Use your<br>Camera</h3>
+      <p class="box-desc">Open your device camera for a live scan.<br>Capture any surface in real-time.</p>
+      <div class="box-action">Open Camera →</div>
+    </div>
+ 
+    <!-- Upload box -->
+    <div class="input-box" id="uploadBox" role="button" tabindex="0">
+      <div class="box-icon">📁</div>
+      <p class="box-num">Option 02</p>
+      <h3 class="box-title">Upload<br>a File</h3>
+      <p class="box-desc">Choose a photo from your device.<br>Supports JPG, PNG, WEBP, BMP.</p>
+      <div class="box-action">Browse Files →</div>
+    </div>
+ 
+  </div>
+ 
+  <!-- Hidden file input -->
+  <input type="file" id="fileInput" accept="image/*" style="display:none" />
+ 
+  <!-- Camera modal -->
+  <div class="modal-overlay" id="cameraModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Live Camera</span>
+        <button class="modal-close" id="closeCamera">✕</button>
+      </div>
+      <video id="cameraFeed" autoplay playsinline></video>
+      <canvas id="snapCanvas" style="display:none"></canvas>
+      <div class="modal-footer">
+        <p class="modal-hint">Position the structure in frame, then capture.</p>
+        <button class="btn-capture" id="captureBtn">⬤ Capture</button>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <p class="loading-text">Analysing image…</p>
+      <p class="loading-sub">Running crack &amp; seep detection</p>
+    </div>
+  </div>
+ 
+  <!-- Hidden form for submission -->
+  <form method="POST" action="{% url 'scan' %}" enctype="multipart/form-data" id="scanForm">
+    {% csrf_token %}
+    <input type="hidden" name="material"   id="materialHidden" />
+    <input type="hidden" name="image_b64"  id="imageB64"       />
+    <input type="file"   name="image_file" id="imageFileHidden" style="display:none" />
+  </form>
+ 
+  <p class="analyse-note">
+    Images are processed server-side and saved temporarily for report generation.<br>
+    For best results, use a well-lit, clear photo taken within 1 metre.
+  </p>
+ 
+</div>
+ 
+{% endblock %}
+ 
+{% block extra_scripts %}
+<script src="{% static 'scanner/js/analyse.js' %}"></script>
+{% endblock %}
+ 

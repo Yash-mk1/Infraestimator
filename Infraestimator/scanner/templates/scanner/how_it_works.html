@@ -1,0 +1,199 @@
+{% extends 'scanner/base.html' %}
+{% load static %}
+{% block title %}How It Works — InfraMonitor.io{% endblock %}
+
+{% block content %}
+<div class="info-page">
+
+  <div class="info-hero">
+    <p class="section-eyebrow">// How it works</p>
+    <h1 class="info-title">From photo to health report</h1>
+    <p class="info-lead">
+      InfraMonitor combines a trained AI segmentation model with classical
+      computer vision to detect structural damage — then converts those
+      findings into a single health score and lifetime estimate.
+    </p>
+  </div>
+
+  <!-- Pipeline steps -->
+  <div class="pipeline">
+
+    <div class="pipeline-step">
+      <div class="pipe-num">01</div>
+      <div class="pipe-body">
+        <h2>Image input</h2>
+        <p>
+          You upload a photo or capture one via your device camera.
+          The image is sent to the Django backend where it is decoded,
+          validated, and resized to a maximum of 1600px on the longest side
+          to keep inference time consistent.
+        </p>
+        <div class="pipe-note">Accepted formats: JPG · PNG · WEBP · BMP</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">02</div>
+      <div class="pipe-body">
+        <h2>Wall isolation</h2>
+        <p>
+          Before any damage is measured, the system identifies the dominant
+          flat surface in the image — the wall, floor, or structural element
+          being inspected. Regions with high edge density (door frames,
+          pipes, furniture) are excluded from analysis so that non-structural
+          objects don't inflate the damage score.
+        </p>
+        <div class="pipe-note">Algorithm: edge density mapping + largest flat-region extraction</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">03</div>
+      <div class="pipe-body">
+        <h2>Shadow rejection</h2>
+        <p>
+          Real-world photos contain shadows that look like cracks to edge
+          detectors. The system identifies shadow regions by checking for
+          low brightness, low saturation, and smooth gradients — properties
+          that distinguish shadows from the sharp, dark edges of actual cracks.
+          Shadow pixels are excluded from damage analysis.
+        </p>
+        <div class="pipe-note">Algorithm: HSV shadow model + Laplacian gradient sharpness check</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">04</div>
+      <div class="pipe-body">
+        <h2>AI crack detection — 60%</h2>
+        <p>
+          A YOLOv11 instance segmentation model, trained on the
+          Surface Crack Segmentation dataset (4,000+ images), runs inference
+          on the image. It outputs a pixel-level mask marking regions it
+          predicts are cracks. This mask contributes 60% of the final
+          combined crack mask.
+        </p>
+        <div class="pipe-note">Model: YOLOv11n-seg · Dataset: Surface Crack Segmentation · mAP@50: 78.7%</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">05</div>
+      <div class="pipe-body">
+        <h2>OpenCV crack detection — 40%</h2>
+        <p>
+          Alongside the AI model, a classical computer vision pipeline runs
+          independently. CLAHE contrast enhancement sharpens the image,
+          Canny edge detection finds crack edges, and morphological
+          skeletonisation thins them to single-pixel lines. This mask
+          contributes 40% of the final combined crack mask — ensuring
+          cracks the AI misses are still caught.
+        </p>
+        <div class="pipe-note">Algorithm: CLAHE → Canny → Dilation → Skeletonisation → Length filter</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">06</div>
+      <div class="pipe-body">
+        <h2>Seep & moisture detection</h2>
+        <p>
+          A second model handles seepage, moisture staining, and rust.
+          Where a seep model is available it runs at 60% weight alongside
+          an OpenCV colour-space analysis (HSV channel thresholds for dark-wet
+          regions, rust hues, and blue-green moisture deposits) at 40% weight.
+          Seep pixels that overlap with crack regions are removed to avoid
+          double-counting.
+        </p>
+        <div class="pipe-note">Colour ranges: rust (H:5–25) · moisture (H:85–135) · dark-wet (V&lt;85, S&gt;45)</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">07</div>
+      <div class="pipe-body">
+        <h2>False positive filtering</h2>
+        <p>
+          Every detected blob is tested for crack-like geometry before it
+          is counted. Blobs that are too round (circularity &gt; 0.65) or
+          too square (aspect ratio &lt; 1.8) are removed — cracks are
+          elongated and thin, not circular or blobby.
+        </p>
+        <div class="pipe-note">Filters: circularity · bounding-box aspect ratio · minimum area (60 px²)</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">08</div>
+      <div class="pipe-body">
+        <h2>Surface degradation scoring</h2>
+        <p>
+          Independent of crack and seep detection, the wall region is analysed
+          for general surface degradation — spalling, erosion, and texture
+          breakdown. Local variance maps and Laplacian sharpness measure how
+          much the surface has deteriorated beyond visible cracking.
+        </p>
+        <div class="pipe-note">Algorithm: Local variance map + Laplacian sharpness score</div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">09</div>
+      <div class="pipe-body">
+        <h2>Health score calculation</h2>
+        <p>
+          Three sub-scores are combined into one damage index.
+          Crack severity carries 50% weight (factoring in spread across the
+          surface and number of separate regions), seep/moisture carries 25%,
+          and surface degradation carries 25%. The damage index is subtracted
+          from 10, floored at 1.0, and rounded to one decimal place.
+        </p>
+        <div class="pipe-note">
+          Score = 10 − (crack×0.50 + seep×0.25 + surface×0.25) − penalties
+        </div>
+      </div>
+    </div>
+
+    <div class="pipeline-connector"></div>
+
+    <div class="pipeline-step">
+      <div class="pipe-num">10</div>
+      <div class="pipe-body">
+        <h2>Lifetime estimation</h2>
+        <p>
+          Remaining service life is estimated from the health score using
+          material-specific baseline lifetimes. Above a score of 4.0 a
+          power-law curve is used; below 4.0 a linear model prevents the
+          estimate collapsing to zero for heavily damaged but still-standing
+          structures. The minimum reported lifetime is 1 year.
+        </p>
+        <div class="pipe-note">
+          Baselines: Concrete 80yr · Brick 100yr · Steel 60yr · Wood 40yr · Asphalt 25yr
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /pipeline -->
+
+  <div class="info-cta">
+    <a href="{% url 'analyse' %}" class="btn-primary">Try it now <span class="btn-arrow">→</span></a>
+  </div>
+
+</div>
+{% endblock %}

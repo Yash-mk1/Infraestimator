@@ -1,0 +1,150 @@
+{% extends 'scanner/base.html' %}
+{% load static %}
+ 
+{% block title %}Health Report — InfraMonitor.io{% endblock %}
+ 
+{% block content %}
+ 
+<div class="result-body">
+ 
+  <!-- Header -->
+  <div class="result-header">
+    <p class="analyse-step">// Analysis complete</p>
+    <h2 class="analyse-title">Health Report</h2>
+    <p class="result-ts">{{ report.timestamp }} &nbsp;·&nbsp; Material: {{ report.material|title }}</p>
+  </div>
+ 
+  <!-- Score + Images grid -->
+  <div class="result-top-grid">
+ 
+    <!-- Score card -->
+    <div class="score-card score-{{ score_class }}">
+      {% if report.critical %}
+        <div class="critical-banner">⚠ CRITICAL — Immediate inspection required</div>
+      {% endif %}
+ 
+      <p class="score-label">Overall Health Score</p>
+      <div class="score-ring-wrap">
+        <svg class="score-ring" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="50"/>
+          <circle class="ring-fill" cx="60" cy="60" r="50"
+                  stroke-dasharray="314"
+                  stroke-dashoffset="{{ 314|add:'-'|add:score_pct|floatformat:0 }}"
+                  style="stroke-dashoffset: calc(314px - (314px * {{ score_pct }} / 100))"/>
+        </svg>
+        <div class="score-inner">
+          <span class="score-num">{{ report.health_score }}</span>
+          <span class="score-denom">/10</span>
+        </div>
+      </div>
+ 
+      <div class="condition-badge condition-{{ score_class }}">{{ report.condition }}</div>
+      <p class="life-estimate">
+        Est. remaining life:
+        <strong>{{ report.estimated_life_years }} years</strong>
+      </p>
+    </div>
+ 
+    <!-- Image tabs -->
+    <div class="image-viewer">
+      <div class="img-tabs">
+        <button class="img-tab active" data-target="original">Original</button>
+        <button class="img-tab" data-target="annotated">Annotated</button>
+        <button class="img-tab" data-target="heatmap">Heatmap</button>
+      </div>
+      <div class="img-panels">
+        <div class="img-panel active" id="panel-original">
+          <img src="{{ report.original_url }}"  alt="Original image" />
+        </div>
+        <div class="img-panel" id="panel-annotated">
+          <img src="{{ report.annotated_url }}" alt="Annotated image" />
+          <p class="img-caption">Red = Crack &nbsp;|&nbsp; Teal = Seep</p>
+        </div>
+        <div class="img-panel" id="panel-heatmap">
+          <img src="{{ report.heatmap_url }}"   alt="Damage heatmap" />
+          <p class="img-caption">Blue → Red intensity = increasing damage</p>
+        </div>
+      </div>
+    </div>
+ 
+  </div><!-- /result-top-grid -->
+ 
+  <!-- Sub-scores -->
+  <div class="subscore-section">
+    <h3 class="section-title">Detection breakdown</h3>
+    <div class="subscore-grid">
+ 
+      <div class="subscore-card">
+        <div class="subscore-header">
+          <span>Crack Severity</span>
+          <span class="subscore-val">{{ report.crack_score }}</span>
+        </div>
+        <div class="subscore-bar"><div class="subscore-fill crack-fill" style="width:{{ report.crack_score }}0%"></div></div>
+        <div class="subscore-detail">
+          {{ report.num_crack_regions }} region(s) &nbsp;·&nbsp;
+          {{ report.crack_area_pct }}% area coverage
+          {% if report.largest_crack_mm_eq > 0 %}
+            &nbsp;·&nbsp; largest ~{{ report.largest_crack_mm_eq }} mm
+          {% endif %}
+        </div>
+      </div>
+ 
+      <div class="subscore-card">
+        <div class="subscore-header">
+          <span>Seep / Moisture</span>
+          <span class="subscore-val">{{ report.seep_score }}</span>
+        </div>
+        <div class="subscore-bar"><div class="subscore-fill seep-fill" style="width:{{ report.seep_score }}0%"></div></div>
+        <div class="subscore-detail">
+          {{ report.num_seep_regions }} region(s) &nbsp;·&nbsp;
+          {{ report.seep_area_pct }}% area coverage
+        </div>
+      </div>
+ 
+      <div class="subscore-card">
+        <div class="subscore-header">
+          <span>Surface Degradation</span>
+          <span class="subscore-val">{{ report.surface_score }}</span>
+        </div>
+        <div class="subscore-bar"><div class="subscore-fill surface-fill" style="width:{{ report.surface_score }}0%"></div></div>
+        <div class="subscore-detail">Erosion / spalling / texture analysis</div>
+      </div>
+ 
+    </div>
+  </div>
+ 
+  <!-- Warnings -->
+  {% if report.warnings %}
+  <div class="warnings-section">
+    <h3 class="section-title">⚠ Warnings</h3>
+    <ul class="warn-list">
+      {% for w in report.warnings %}
+        <li>{{ w }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+ 
+  <!-- Recommendations -->
+  <div class="reco-section">
+    <h3 class="section-title">Recommendations</h3>
+    <ol class="reco-list">
+      {% for r in report.recommendations %}
+        <li>{{ r }}</li>
+      {% endfor %}
+    </ol>
+  </div>
+ 
+  <!-- Actions -->
+  <div class="result-actions">
+    <a href="{% url 'analyse' %}" class="btn-secondary">← Scan Another</a>
+    <button class="btn-primary" onclick="window.print()">Print Report</button>
+  </div>
+ 
+</div>
+ 
+{% endblock %}
+ 
+{% block extra_scripts %}
+<script src="{% static 'scanner/js/result.js' %}"></script>
+{% endblock %}

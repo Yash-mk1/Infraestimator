@@ -1,0 +1,85 @@
+{% extends 'scanner/base.html' %}
+{% load static %}
+
+{% block title %}
+  InfraMonitor.io — Structural Health Analysis
+{% endblock %}
+
+{% block content %}
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-tag">AI-Powered Structural Analysis</div>
+    <h1 class="hero-title">Infra<br />Monitor<span class="io-outline">.io</span></h1>
+    <p class="hero-sub">
+      Detect cracks, seeps, and surface degradation instantly.<br />
+      Get a health score and estimated remaining lifetime — in seconds.
+    </p>
+  </section>
+
+  <!-- CAROUSEL -->
+  <section class="carousel-section">
+    <div class="carousel-wrap">
+      <div class="carousel-track" id="carTrack">
+        <div class="carousel-slide slide-1">
+          <img src="{% static 'scanner\corousel_images\crackwall.png' %}" alt="" />
+          <div class="slide-fade"></div>
+          <div class="slide-label">
+            <div>
+              <h3>Concrete Structures</h3>
+              <p>Bridges · Columns · Foundations</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="carousel-slide slide-2">
+          <img src="{% static 'scanner\corousel_images\crackedbrick.png' %}" alt="" />
+          <div class="slide-fade"></div>
+          <div class="slide-label">
+            <div>
+              <h3>Masonry & Brickwork</h3>
+              <p>Walls · Arches · Heritage Buildings</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="carousel-slide slide-3">
+          <img src="{% static 'scanner\corousel_images\metal_bridge.png' %}" alt="" />
+          <div class="slide-fade"></div>
+          <div class="slide-label">
+            <div>
+              <h3>Steel & Metal</h3>
+              <p>Beams · Pipelines · Frames</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="carousel-slide slide-4">
+          <img src="{% static 'scanner\corousel_images\crackedroad.jpg' %}" alt="" />
+          <div class="slide-fade"></div>
+          <div class="slide-label">
+            <div>
+              <h3>Roads & Pavements</h3>
+              <p>Asphalt · Kerbs · Drainage</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="carousel-controls">
+      <button class="car-btn" id="carPrev" aria-label="Previous">&#8592;</button>
+      <div class="car-dots" id="carDots"></div>
+      <button class="car-btn" id="carNext" aria-label="Next">&#8594;</button>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <p class="cta-hint">Ready to scan?</p>
+    <a href="{% url 'analyse' %}" class="btn-primary">Test your material / object <span class="btn-arrow">→</span></a>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'scanner/js/carousel.js' %}"></script>
+{% endblock %}

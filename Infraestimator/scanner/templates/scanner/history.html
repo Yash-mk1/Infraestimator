@@ -1,0 +1,74 @@
+{% extends 'scanner/base.html' %}
+{% block title %}My Scans — InfraMonitor.io{% endblock %}
+
+{% block content %}
+<div class="history-page">
+
+  <div class="history-header">
+    <p class="section-eyebrow">// {{ user.username }}</p>
+    <h1 class="analyse-title">My Scans</h1>
+    <p class="analyse-sub">{{ scans.count }} scan{{ scans.count|pluralize }} on record</p>
+  </div>
+
+  {% if scans %}
+    <div class="history-grid">
+      {% for scan in scans %}
+        <a href="{% url 'history_detail' scan.pk %}" class="history-card">
+
+          <!-- Thumbnail -->
+          <div class="hc-thumb">
+            {% if scan.original_url %}
+              <img src="{{ scan.original_url }}" alt="Scan {{ scan.pk }}" />
+            {% else %}
+              <div class="hc-thumb-placeholder">📷</div>
+            {% endif %}
+          </div>
+
+          <!-- Info -->
+          <div class="hc-body">
+            <div class="hc-top">
+              <span class="hc-score score-{{ scan.score_class }}">
+                {{ scan.health_score }}/10
+              </span>
+              <span class="hc-condition condition-{{ scan.score_class }}">
+                {{ scan.condition }}
+              </span>
+            </div>
+
+            <div class="hc-meta">
+              <span>{{ scan.material|title }}</span>
+              <span>·</span>
+              <span>{{ scan.estimated_life_years }} yrs remaining</span>
+            </div>
+
+            {% if scan.critical %}
+              <div class="hc-critical">⚠ Critical</div>
+            {% endif %}
+
+            <div class="hc-stats">
+              <span>Cracks: {{ scan.num_crack_regions }}</span>
+              <span>Seep: {{ scan.seep_area_pct|floatformat:1 }}%</span>
+            </div>
+
+            <div class="hc-date">
+              {{ scan.created_at|date:"d M Y, H:i" }}
+            </div>
+          </div>
+
+        </a>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <div class="history-empty">
+      <p class="empty-icon">📂</p>
+      <p class="empty-text">No scans yet</p>
+      <p class="empty-sub">Upload your first image to generate a health report.</p>
+      <a href="{% url 'analyse' %}" class="btn-primary">
+        Start scanning <span class="btn-arrow">→</span>
+      </a>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

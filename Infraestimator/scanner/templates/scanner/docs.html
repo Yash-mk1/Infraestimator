@@ -1,0 +1,185 @@
+{% extends 'scanner/base.html' %}
+{% load static %}
+{% block title %}Docs & Research — InfraMonitor.io{% endblock %}
+
+{% block content %}
+<div class="info-page">
+
+  <div class="info-hero">
+    <p class="section-eyebrow">// Docs & Research</p>
+    <h1 class="info-title">Studies, inspiration & thinking</h1>
+    <p class="info-lead">
+      InfraMonitor was built on a body of existing research in structural
+      health monitoring, computer vision, and deep learning for crack detection.
+      Below are the studies, datasets, and ideas that shaped our approach.
+    </p>
+  </div>
+
+  <!-- Studies -->
+  <div class="docs-section">
+    <h2 class="docs-section-title">Research that inspired us</h2>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Dataset</span>
+        <span class="study-year">2019</span>
+      </div>
+      <h3>CrackForest Dataset</h3>
+      <p>
+        A benchmark dataset of 118 road pavement images with pixel-level
+        crack annotations. One of the first publicly available datasets for
+        crack segmentation, it established the evaluation metrics (precision,
+        recall, F-measure) used in most subsequent crack detection research.
+        Our OpenCV pipeline's threshold choices were informed by how models
+        perform on this dataset.
+      </p>
+      <div class="study-ref">Shi et al. · IEEE Transactions on Circuits and Systems for Video Technology</div>
+    </div>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Dataset</span>
+        <span class="study-year">2018</span>
+      </div>
+      <h3>AigleRN Dataset</h3>
+      <p>
+        A road surface crack dataset collected from French roads, containing
+        images under various lighting conditions including shadows and
+        wet surfaces. This dataset directly informed our shadow rejection
+        logic — many false positives in early testing came from road shadows
+        that looked identical to longitudinal cracks under Canny edge detection.
+      </p>
+      <div class="study-ref">Chambon & Moliard · IEEE Transactions on Intelligent Transportation Systems</div>
+    </div>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Architecture</span>
+        <span class="study-year">2023</span>
+      </div>
+      <h3>YOLOv8 / YOLOv11 for Instance Segmentation</h3>
+      <p>
+        Ultralytics' YOLO family extended object detection into pixel-level
+        instance segmentation — the ability to output a mask for each detected
+        object rather than a bounding box. This was the key architectural
+        decision that made our approach possible: instead of knowing a crack
+        exists somewhere in a rectangle, we know exactly which pixels are crack.
+        The nano variant (yolo11n-seg) was chosen for its ability to run on CPU
+        without a GPU.
+      </p>
+      <div class="study-ref">Jocher et al. · Ultralytics · ultralytics.com</div>
+    </div>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Method</span>
+        <span class="study-year">1986</span>
+      </div>
+      <h3>Canny Edge Detection</h3>
+      <p>
+        John Canny's edge detector remains one of the most effective methods
+        for finding crack-like features in images. Its two-threshold hysteresis
+        approach — keeping strong edges and weak edges connected to strong ones —
+        makes it ideal for tracing the thin, continuous lines of structural
+        cracks. We use it as the backbone of our OpenCV fallback pipeline,
+        enhanced with CLAHE preprocessing to handle uneven lighting.
+      </p>
+      <div class="study-ref">Canny, J. · IEEE Transactions on Pattern Analysis and Machine Intelligence</div>
+    </div>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Method</span>
+        <span class="study-year">1994</span>
+      </div>
+      <h3>Morphological Skeletonisation</h3>
+      <p>
+        Thinning binary crack masks to single-pixel-wide skeletons preserves
+        the topology (connectivity and branching) of a crack network while
+        removing thickness variation caused by image resolution or lighting.
+        This is critical for measuring crack length and filtering short noise
+        segments — a skeleton segment shorter than 15 pixels is almost certainly
+        not a structural crack.
+      </p>
+      <div class="study-ref">Zhang & Suen · Communications of the ACM · implemented in scikit-image</div>
+    </div>
+
+    <div class="study-card">
+      <div class="study-meta">
+        <span class="study-tag">Preprocessing</span>
+        <span class="study-year">1994</span>
+      </div>
+      <h3>CLAHE — Contrast Limited Adaptive Histogram Equalisation</h3>
+      <p>
+        Standard histogram equalisation can over-amplify noise in uniform
+        regions. CLAHE divides the image into tiles and equalises each locally,
+        with a clip limit to prevent noise amplification. For infrastructure
+        images — which often have overexposed concrete and underexposed crack
+        interiors — CLAHE significantly improves crack visibility before edge
+        detection runs.
+      </p>
+      <div class="study-ref">Zuiderveld · Graphics Gems IV · implemented in OpenCV</div>
+    </div>
+
+  </div>
+
+  <!-- Our thinking -->
+  <div class="docs-section">
+    <h2 class="docs-section-title">Our design decisions</h2>
+
+    <div class="thinking-grid">
+
+      <div class="thinking-card">
+        <h3>Why 60% AI + 40% OpenCV?</h3>
+        <p>
+          A trained model is more accurate on crack types it has seen during
+          training, but can miss unusual crack patterns or fail on low-quality
+          images. OpenCV is consistent but generates more false positives.
+          By merging both with AI at higher weight, we get the accuracy of
+          the model where it's confident, and the coverage of rule-based
+          detection where it isn't.
+        </p>
+      </div>
+
+      <div class="thinking-card">
+        <h3>Why not use just the AI model?</h3>
+        <p>
+          Our crack model was trained on 26 epochs of a 4,000-image dataset —
+          a solid start but not enough to generalise perfectly to every surface
+          type, lighting condition, and camera angle. The OpenCV layer acts as
+          a safety net. When the model is retrained on more data, the OpenCV
+          weight can be reduced.
+        </p>
+      </div>
+
+      <div class="thinking-card">
+        <h3>Why score spread, not just area?</h3>
+        <p>
+          A close-up photo of a single crack has high pixel coverage but low
+          structural risk compared to the same number of pixels spread across
+          an entire wall. Measuring the bounding box of the crack network
+          relative to the image size gives a better proxy for how widespread
+          the damage actually is.
+        </p>
+      </div>
+
+      <div class="thinking-card">
+        <h3>Why a score floor of 1.0?</h3>
+        <p>
+          A structure that is being photographed and scanned is still standing.
+          Reporting 0.0 years remaining life implies total collapse, which is
+          never literally the case at the time of inspection. The floor of 1.0
+          and minimum lifetime of 1 year reflects that even severely damaged
+          structures have some residual service life before intervention.
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="info-cta">
+    <a href="{% url 'analyse' %}" class="btn-primary">Try it now <span class="btn-arrow">→</span></a>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}InfraMonitor.io{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet" />
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'scanner/css/main.css' %}" />
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="{% url 'home' %}" class="nav-logo">
+      <span class="dot"></span>
+      InfraMonitor<span class="io">.io</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="{% url 'how_it_works' %}">How it works</a></li>
+      <li><a href="{% url 'technology' %}">Technology</a></li>
+      <li><a href="{% url 'docs' %}">Docs</a></li>
+      {% if user.is_authenticated %}
+        <li><a href="{% url 'history' %}">My Scans</a></li>
+      {% endif %}
+    </ul>
+
+    <div class="nav-auth">
+      {% if user.is_authenticated %}
+        <span class="nav-username">{{ user.username }}</span>
+        <a href="{% url 'logout' %}" class="nav-cta nav-cta-outline">Log out</a>
+      {% else %}
+        <a href="{% url 'login' %}" class="nav-cta nav-cta-outline">Log in</a>
+        <a href="{% url 'signup' %}" class="nav-cta">Sign up</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  {% if messages %}
+    <div class="messages-bar">
+      {% for message in messages %}
+        <div class="message-item message-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="{% static 'scanner/js/main.js' %}"></script>
+  {% block extra_scripts %}{% endblock %}
+
+</body>
+</html>
