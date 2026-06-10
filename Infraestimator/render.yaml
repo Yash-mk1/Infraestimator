@@ -2,14 +2,14 @@ services:
   - type: web
     name: inframonitor
     runtime: python
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    buildCommand: "pip install -r ../requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
     startCommand: "gunicorn Infraestimator.wsgi:application"
-    workingDirectory: "/opt/render/project/src"
+    workingDirectory: "/opt/render/project/src/Infraestimator"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: PYTHONPATH
-        value: "/opt/render/project/src"
+        value: "/opt/render/project/src/Infraestimator"
       - key: DJANGO_SETTINGS_MODULE
         value: Infraestimator.settings
       - key: SECRET_KEY
