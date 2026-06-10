@@ -4,9 +4,12 @@ services:
     runtime: python
     buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
     startCommand: "gunicorn Infraestimator.wsgi:application"
+    workingDirectory: "/opt/render/project/src"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: PYTHONPATH
+        value: "/opt/render/project/src"
       - key: DJANGO_SETTINGS_MODULE
         value: Infraestimator.settings
       - key: SECRET_KEY
