@@ -1,12 +1,12 @@
 {% extends 'scanner/base.html' %}
 {% load static %}
- 
+
 {% block title %}Scan — InfraMonitor.io{% endblock %}
- 
+
 {% block content %}
- 
+
 <div class="analyse-body">
- 
+
   <div class="analyse-header">
     <p class="analyse-step">// Step 01 — Select input method</p>
     <h2 class="analyse-title">Scan your structure</h2>
@@ -14,11 +14,35 @@
       Point your camera at the surface, or upload a photo.<br>
       Our model will detect damage and generate a health report.
     </p>
+
     {% if error %}
-      <p class="error-msg">⚠ {{ error }}</p>
+      <div class="validation-error {% if validation_failed %}validation-wrong-image{% endif %}">
+        {% if validation_failed %}
+          <div class="val-icon">⚠️</div>
+          <div class="val-body">
+            <p class="val-title">Wrong image type detected</p>
+            <p class="val-msg">{{ error }}</p>
+            {% if validation_confidence %}
+              <p class="val-conf">
+                Surface confidence: {{ validation_confidence }}%
+                — minimum required: 42%
+              </p>
+            {% endif %}
+            <p class="val-hint">
+              Good examples: concrete wall, brick surface, road, bridge, floor
+            </p>
+          </div>
+        {% else %}
+          <div class="val-icon">✕</div>
+          <div class="val-body">
+            <p class="val-msg">{{ error }}</p>
+          </div>
+        {% endif %}
+      </div>
     {% endif %}
+
   </div>
- 
+
   <!-- Material selector -->
   <div class="material-row">
     <label class="material-label" for="materialSelect">Material type:</label>
@@ -31,11 +55,10 @@
       <option value="asphalt">Asphalt / Road</option>
     </select>
   </div>
- 
+
   <!-- Input boxes -->
   <div class="input-grid">
- 
-    <!-- Camera box -->
+
     <div class="input-box" id="cameraBox" role="button" tabindex="0">
       <div class="box-icon">📷</div>
       <p class="box-num">Option 01</p>
@@ -43,8 +66,7 @@
       <p class="box-desc">Open your device camera for a live scan.<br>Capture any surface in real-time.</p>
       <div class="box-action">Open Camera →</div>
     </div>
- 
-    <!-- Upload box -->
+
     <div class="input-box" id="uploadBox" role="button" tabindex="0">
       <div class="box-icon">📁</div>
       <p class="box-num">Option 02</p>
@@ -52,12 +74,11 @@
       <p class="box-desc">Choose a photo from your device.<br>Supports JPG, PNG, WEBP, BMP.</p>
       <div class="box-action">Browse Files →</div>
     </div>
- 
+
   </div>
- 
-  <!-- Hidden file input -->
+
   <input type="file" id="fileInput" accept="image/*" style="display:none" />
- 
+
   <!-- Camera modal -->
   <div class="modal-overlay" id="cameraModal">
     <div class="modal-box">
@@ -73,34 +94,34 @@
       </div>
     </div>
   </div>
- 
+
   <!-- Loading overlay -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-box">
       <div class="spinner"></div>
       <p class="loading-text">Analysing image…</p>
-      <p class="loading-sub">Running crack &amp; seep detection</p>
+      <p class="loading-sub">Validating · Running crack &amp; seep detection</p>
     </div>
   </div>
- 
-  <!-- Hidden form for submission -->
-  <form method="POST" action="{% url 'scan' %}" enctype="multipart/form-data" id="scanForm">
+
+  <form method="POST" action="{% url 'scan' %}"
+        enctype="multipart/form-data" id="scanForm">
     {% csrf_token %}
     <input type="hidden" name="material"   id="materialHidden" />
-    <input type="hidden" name="image_b64"  id="imageB64"       />
+    <input type="hidden" name="image_b64"  id="imageB64" />
     <input type="file"   name="image_file" id="imageFileHidden" style="display:none" />
   </form>
- 
+
   <p class="analyse-note">
-    Images are processed server-side and saved temporarily for report generation.<br>
-    For best results, use a well-lit, clear photo taken within 1 metre.
+    Images are validated before processing — please upload a photo of a
+    structural surface (wall, road, bridge, floor).<br>
+    Images of people, animals, or unrelated objects will be rejected.
   </p>
- 
+
 </div>
- 
+
 {% endblock %}
- 
+
 {% block extra_scripts %}
 <script src="{% static 'scanner/js/analyse.js' %}"></script>
 {% endblock %}
- 

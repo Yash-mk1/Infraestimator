@@ -1,7 +1,6 @@
 """
 scanner/views.py — MODIFIED
-Added: signup, login, logout, history views
-Protected: scan + result require login
+Added image validation before scan pipeline runs.
 """
 
 import os
@@ -19,6 +18,7 @@ from django.contrib import messages
 
 from .analyser import InfrastructureAnalyzer, HealthScorer
 from .models import ScanResult
+from .image_validator import validate_image
 
 
 # ── Public pages ──────────────────────────────────────────────────────────────
@@ -38,18 +38,17 @@ def docs(request):
     return render(request, 'scanner/docs.html')
 
 
-# ── Auth views ────────────────────────────────────────────────────────────────
+# ── Auth ──────────────────────────────────────────────────────────────────────
 def signup_view(request):
     if request.user.is_authenticated:
         return redirect('home')
 
     if request.method == 'POST':
-        username   = request.POST.get('username', '').strip()
-        email      = request.POST.get('email', '').strip()
-        password1  = request.POST.get('password1', '')
-        password2  = request.POST.get('password2', '')
+        username  = request.POST.get('username', '').strip()
+        email     = request.POST.get('email', '').strip()
+        password1 = request.POST.get('password1', '')
+        password2 = request.POST.get('password2', '')
 
-        # Validation
         if not username or not password1:
             messages.error(request, 'Username and password are required.')
         elif password1 != password2:
@@ -60,9 +59,7 @@ def signup_view(request):
             messages.error(request, 'Username already taken.')
         else:
             user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password1
+                username=username, email=email, password=password1
             )
             login(request, user)
             messages.success(request, f'Welcome, {username}!')
@@ -82,7 +79,6 @@ def login_view(request):
 
         if user is not None:
             login(request, user)
-            # Redirect to page they came from, or home
             next_url = request.POST.get('next') or request.GET.get('next') or 'home'
             return redirect(next_url)
         else:
@@ -98,7 +94,7 @@ def logout_view(request):
     return redirect('home')
 
 
-# ── Scan (login required) ─────────────────────────────────────────────────────
+# ── Scan ──────────────────────────────────────────────────────────────────────
 @login_required(login_url='/login/')
 def scan(request):
     if request.method != 'POST':
@@ -107,9 +103,12 @@ def scan(request):
     material  = request.POST.get('material', 'general')
     image_bgr = None
 
+    # ── Decode image ──────────────────────────────────────────────────────────
     if 'image_file' in request.FILES:
-        file_bytes = np.frombuffer(request.FILES['image_file'].read(), dtype=np.uint8)
-        image_bgr  = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        file_bytes = np.frombuffer(
+            request.FILES['image_file'].read(), dtype=np.uint8
+        )
+        image_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
     elif request.POST.get('image_b64'):
         b64 = request.POST['image_b64']
@@ -124,18 +123,32 @@ def scan(request):
         return render(request, 'scanner/analyse.html',
                       {'error': 'Could not decode image. Please try again.'})
 
+    # ── Validate image ────────────────────────────────────────────────────────
+    is_valid, reason, confidence = validate_image(image_bgr)
+
+    if not is_valid:
+        return render(request, 'scanner/analyse.html', {
+            'error':               reason,
+            'validation_failed':   True,
+            'validation_confidence': round(confidence * 100, 1),
+        })
+
+    # ── Resize if needed ──────────────────────────────────────────────────────
     h, w = image_bgr.shape[:2]
     if max(h, w) > 1600:
         scale = 1600 / max(h, w)
-        image_bgr = cv2.resize(image_bgr,
-                               (int(w * scale), int(h * scale)),
-                               interpolation=cv2.INTER_AREA)
+        image_bgr = cv2.resize(
+            image_bgr, (int(w * scale), int(h * scale)),
+            interpolation=cv2.INTER_AREA
+        )
 
+    # ── Run analysis ──────────────────────────────────────────────────────────
     analyzer  = InfrastructureAnalyzer()
     scorer    = HealthScorer()
     detection = analyzer.analyze(image_bgr)
     report    = scorer.score(detection, material)
 
+    # ── Save images ───────────────────────────────────────────────────────────
     uid         = uuid.uuid4().hex[:10]
     results_dir = os.path.join(settings.MEDIA_ROOT, 'results')
     os.makedirs(results_dir, exist_ok=True)
@@ -153,7 +166,7 @@ def scan(request):
     annotated_url = media_prefix + annotated_name
     heatmap_url   = media_prefix + heatmap_name
 
-    # Save to database tied to logged-in user
+    # ── Save to database ──────────────────────────────────────────────────────
     scan_obj = ScanResult.objects.create(
         user                 = request.user,
         material             = material,
@@ -178,7 +191,7 @@ def scan(request):
         heatmap_url          = heatmap_url,
     )
 
-    # Store in session for result page
+    # ── Store in session ──────────────────────────────────────────────────────
     request.session['report'] = {
         'scan_id':              scan_obj.pk,
         'timestamp':            report.timestamp,
@@ -202,6 +215,7 @@ def scan(request):
         'annotated_url':        annotated_url,
         'heatmap_url':          heatmap_url,
         'original_url':         orig_url,
+        'validation_confidence': round(confidence * 100, 1),
     }
 
     return redirect('result')
@@ -232,11 +246,12 @@ def result(request):
 # ── History ───────────────────────────────────────────────────────────────────
 @login_required(login_url='/login/')
 def history(request):
-    scans = ScanResult.objects.filter(user=request.user).order_by('-created_at')
+    scans = ScanResult.objects.filter(
+        user=request.user
+    ).order_by('-created_at')
     return render(request, 'scanner/history.html', {'scans': scans})
 
 
-# ── History detail (revisit a past scan) ─────────────────────────────────────
 @login_required(login_url='/login/')
 def history_detail(request, scan_id):
     try:
@@ -275,11 +290,12 @@ def history_detail(request, scan_id):
         'annotated_url':        scan.annotated_url,
         'heatmap_url':          scan.heatmap_url,
         'original_url':         scan.original_url,
+        'validation_confidence': 100,
     }
 
     return render(request, 'scanner/result.html', {
-        'report':      report,
-        'score_class': score_class,
-        'score_pct':   int((scan.health_score / 10) * 100),
+        'report':       report,
+        'score_class':  score_class,
+        'score_pct':    int((scan.health_score / 10) * 100),
         'from_history': True,
     })
