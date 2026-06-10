@@ -21,7 +21,10 @@ ALLOWED_HOSTS = (
     if ALLOWED_HOSTS_ENV
     else ['127.0.0.1', 'localhost']
 )
-
+CSRF_TRUSTED_ORIGINS = [
+    f"https://{h}" for h in ALLOWED_HOSTS
+    if h not in ("localhost", "127.0.0.1")
+]
 # ── Apps ───────────────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
