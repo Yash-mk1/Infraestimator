@@ -1,227 +1,167 @@
 {% extends 'scanner/base.html' %}
 {% load static %}
-{% block title %}Technology — InfraMonitor.io{% endblock %}
+{% block title %}
+  Technology — InfraMonitor.io
+{% endblock %}
 
 {% block content %}
-<div class="info-page">
-
-  <div class="info-hero">
-    <p class="section-eyebrow">// Technology</p>
-    <h1 class="info-title">What powers InfraMonitor</h1>
-    <p class="info-lead">
-      Every layer of the stack — from image decoding to health scoring —
-      is built on open-source libraries. Here's what each one does and
-      why we chose it.
-    </p>
-  </div>
-
-  <!-- Category: AI / ML -->
-  <div class="tech-category">
-    <div class="tech-category-header">
-      <span class="tech-cat-tag">AI / Machine Learning</span>
+  <div class="info-page">
+    <div class="info-hero">
+      <p class="section-eyebrow">// Technology</p>
+      <h1 class="info-title">What powers InfraMonitor</h1>
+      <p class="info-lead">Every layer of the stack — from image decoding to health scoring — is built on open-source libraries. Here's what each one does and why we chose it.</p>
     </div>
-    <div class="tech-cards">
 
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🤖</span>
-          <div>
-            <h3>Ultralytics YOLOv11</h3>
-            <span class="tdc-version">ultralytics &gt;= 8.3.0</span>
-          </div>
-        </div>
-        <p>
-          YOLO (You Only Look Once) is a real-time object detection and
-          segmentation architecture. We use the YOLOv11 nano segmentation
-          variant — the smallest and fastest in the family — which outputs
-          pixel-level instance masks rather than just bounding boxes.
-          This lets us know exactly which pixels are crack, not just which
-          rectangle contains one.
-        </p>
-        <div class="tdc-used-for">Used for: crack segmentation mask · seep detection mask</div>
+    <!-- Category: AI / ML -->
+    <div class="tech-category">
+      <div class="tech-category-header">
+        <span class="tech-cat-tag">AI / Machine Learning</span>
       </div>
-
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">📦</span>
-          <div>
-            <h3>ONNX Runtime</h3>
-            <span class="tdc-version">onnxruntime &gt;= 1.17.0</span>
+      <div class="tech-cards">
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🤖</span>
+            <div>
+              <h3>Ultralytics YOLOv11</h3>
+              <span class="tdc-version">ultralytics &gt;= 8.3.0</span>
+            </div>
           </div>
+          <p>YOLO (You Only Look Once) is a real-time object detection and segmentation architecture. We use the YOLOv11 nano segmentation variant — the smallest and fastest in the family — which outputs pixel-level instance masks rather than just bounding boxes. This lets us know exactly which pixels are crack, not just which rectangle contains one.</p>
+          <div class="tdc-used-for">Used for: crack segmentation mask · seep detection mask</div>
         </div>
-        <p>
-          An inference engine for running models exported to the Open Neural
-          Network Exchange format. ONNX Runtime allows models trained in any
-          framework to run efficiently on CPU without the full training
-          library installed. Used as a secondary inference backend when
-          Ultralytics is unavailable.
-        </p>
-        <div class="tdc-used-for">Used for: fallback model inference on CPU</div>
-      </div>
 
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">📦</span>
+            <div>
+              <h3>ONNX Runtime</h3>
+              <span class="tdc-version">onnxruntime &gt;= 1.17.0</span>
+            </div>
+          </div>
+          <p>An inference engine for running models exported to the Open Neural Network Exchange format. ONNX Runtime allows models trained in any framework to run efficiently on CPU without the full training library installed. Used as a secondary inference backend when Ultralytics is unavailable.</p>
+          <div class="tdc-used-for">Used for: fallback model inference on CPU</div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- Category: Computer Vision -->
-  <div class="tech-category">
-    <div class="tech-category-header">
-      <span class="tech-cat-tag">Computer Vision</span>
+    <!-- Category: Computer Vision -->
+    <div class="tech-category">
+      <div class="tech-category-header">
+        <span class="tech-cat-tag">Computer Vision</span>
+      </div>
+      <div class="tech-cards">
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">👁️</span>
+            <div>
+              <h3>OpenCV</h3>
+              <span class="tdc-version">opencv-python &gt;= 4.8.0</span>
+            </div>
+          </div>
+          <p>The industry-standard computer vision library. We use it for image decoding, colour space conversion (BGR → HSV → Gray), CLAHE contrast enhancement, Canny edge detection, morphological operations (dilation, closing, erosion), connected component labelling, heatmap generation with COLORMAP_JET, and drawing annotations on output images.</p>
+          <div class="tdc-used-for">Used for: almost everything image-related</div>
+        </div>
+
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🔬</span>
+            <div>
+              <h3>scikit-image</h3>
+              <span class="tdc-version">scikit-image &gt;= 0.21.0</span>
+            </div>
+          </div>
+          <p>
+            A scientific image processing library built on NumPy. We use its <code>morphology.skeletonize()</code> to thin crack masks to single-pixel-wide lines (removing thick blobs while preserving crack topology), and <code>measure.regionprops()</code>
+            to compute per-region statistics like area, perimeter, centroid, and bounding box — used in false positive filtering and crack width estimation.
+          </p>
+          <div class="tdc-used-for">Used for: skeletonisation · region property measurement</div>
+        </div>
+
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">📐</span>
+            <div>
+              <h3>SciPy (ndimage)</h3>
+              <span class="tdc-version">scipy &gt;= 1.11.0</span>
+            </div>
+          </div>
+          <p>
+            SciPy's <code>ndimage</code> module provides multi-dimensional image processing primitives. We use <code>ndimage.label()</code>
+            to assign unique integer labels to each connected crack region, and <code>ndimage.sum()</code> to measure the length of each skeleton segment so short noise fragments can be filtered out.
+          </p>
+          <div class="tdc-used-for">Used for: connected component labelling · skeleton length filtering</div>
+        </div>
+      </div>
     </div>
-    <div class="tech-cards">
 
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">👁️</span>
-          <div>
-            <h3>OpenCV</h3>
-            <span class="tdc-version">opencv-python &gt;= 4.8.0</span>
-          </div>
-        </div>
-        <p>
-          The industry-standard computer vision library. We use it for
-          image decoding, colour space conversion (BGR → HSV → Gray),
-          CLAHE contrast enhancement, Canny edge detection, morphological
-          operations (dilation, closing, erosion), connected component
-          labelling, heatmap generation with COLORMAP_JET, and drawing
-          annotations on output images.
-        </p>
-        <div class="tdc-used-for">Used for: almost everything image-related</div>
+    <!-- Category: Data & Numerics -->
+    <div class="tech-category">
+      <div class="tech-category-header">
+        <span class="tech-cat-tag">Data & Numerics</span>
       </div>
-
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🔬</span>
-          <div>
-            <h3>scikit-image</h3>
-            <span class="tdc-version">scikit-image &gt;= 0.21.0</span>
+      <div class="tech-cards">
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🔢</span>
+            <div>
+              <h3>NumPy</h3>
+              <span class="tdc-version">numpy &gt;= 1.24.0</span>
+            </div>
           </div>
+          <p>The foundation of scientific Python. Every image in our pipeline is a NumPy array (height × width × channels). We use NumPy for float32 image arithmetic, mask creation via boolean indexing, bitwise operations, weighted blending of AI and OpenCV masks, and statistical operations like mean and clip for score calculation.</p>
+          <div class="tdc-used-for">Used for: all array operations throughout the pipeline</div>
         </div>
-        <p>
-          A scientific image processing library built on NumPy.
-          We use its <code>morphology.skeletonize()</code> to thin crack
-          masks to single-pixel-wide lines (removing thick blobs while
-          preserving crack topology), and <code>measure.regionprops()</code>
-          to compute per-region statistics like area, perimeter,
-          centroid, and bounding box — used in false positive filtering
-          and crack width estimation.
-        </p>
-        <div class="tdc-used-for">Used for: skeletonisation · region property measurement</div>
-      </div>
 
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">📐</span>
-          <div>
-            <h3>SciPy (ndimage)</h3>
-            <span class="tdc-version">scipy &gt;= 1.11.0</span>
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🖼️</span>
+            <div>
+              <h3>Pillow</h3>
+              <span class="tdc-version">Pillow &gt;= 10.0.0</span>
+            </div>
           </div>
+          <p>Python's imaging library, used for reading image formats that OpenCV handles less gracefully (such as WEBP and certain PNG variants) and for any image format conversion tasks during file handling in the Django upload pipeline.</p>
+          <div class="tdc-used-for">Used for: image format compatibility · file handling</div>
         </div>
-        <p>
-          SciPy's <code>ndimage</code> module provides multi-dimensional
-          image processing primitives. We use <code>ndimage.label()</code>
-          to assign unique integer labels to each connected crack region,
-          and <code>ndimage.sum()</code> to measure the length of each
-          skeleton segment so short noise fragments can be filtered out.
-        </p>
-        <div class="tdc-used-for">Used for: connected component labelling · skeleton length filtering</div>
       </div>
-
     </div>
-  </div>
 
-  <!-- Category: Data & Numerics -->
-  <div class="tech-category">
-    <div class="tech-category-header">
-      <span class="tech-cat-tag">Data & Numerics</span>
+    <!-- Category: Web Framework -->
+    <div class="tech-category">
+      <div class="tech-category-header">
+        <span class="tech-cat-tag">Web Framework & Infrastructure</span>
+      </div>
+      <div class="tech-cards">
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🐍</span>
+            <div>
+              <h3>Django</h3>
+              <span class="tdc-version">django &gt;= 4.2</span>
+            </div>
+          </div>
+          <p>The backend web framework. Django handles HTTP routing, CSRF protection, session management (for passing scan results to the report page), the ORM (Object Relational Mapper) for storing scan history in SQLite, static file serving, and the template engine that renders the HTML pages you're reading now.</p>
+          <div class="tdc-used-for">Used for: routing · sessions · database ORM · templates · file serving</div>
+        </div>
+
+        <div class="tech-detail-card">
+          <div class="tdc-top">
+            <span class="tdc-icon">🗄️</span>
+            <div>
+              <h3>PostgreSQL via Supabase</h3>
+              <span class="tdc-version">supabase.com</span>
+            </div>
+          </div>
+          <p>
+            A managed PostgreSQL database hosted on Supabase. Every scan result — health score, sub-scores, detection stats, AI confidence, warnings, and recommendations — is stored as a <code>ScanResult</code> row, along with user accounts and credentials, accessed through Django's ORM. Supabase was chosen over a self-hosted database because it stays available continuously, unlike ephemeral storage on free-tier hosting.
+          </p>
+          <div class="tdc-used-for">Used for: persistent scan history · user accounts · production database</div>
+        </div>
+      </div>
     </div>
-    <div class="tech-cards">
 
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🔢</span>
-          <div>
-            <h3>NumPy</h3>
-            <span class="tdc-version">numpy &gt;= 1.24.0</span>
-          </div>
-        </div>
-        <p>
-          The foundation of scientific Python. Every image in our pipeline
-          is a NumPy array (height × width × channels). We use NumPy for
-          float32 image arithmetic, mask creation via boolean indexing,
-          bitwise operations, weighted blending of AI and OpenCV masks,
-          and statistical operations like mean and clip for score calculation.
-        </p>
-        <div class="tdc-used-for">Used for: all array operations throughout the pipeline</div>
-      </div>
-
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🖼️</span>
-          <div>
-            <h3>Pillow</h3>
-            <span class="tdc-version">Pillow &gt;= 10.0.0</span>
-          </div>
-        </div>
-        <p>
-          Python's imaging library, used for reading image formats that
-          OpenCV handles less gracefully (such as WEBP and certain PNG
-          variants) and for any image format conversion tasks during
-          file handling in the Django upload pipeline.
-        </p>
-        <div class="tdc-used-for">Used for: image format compatibility · file handling</div>
-      </div>
-
+    <div class="info-cta">
+      <a href="{% url 'analyse' %}" class="btn-primary">Try it now <span class="btn-arrow">→</span></a>
     </div>
   </div>
-
-  <!-- Category: Web Framework -->
-  <div class="tech-category">
-    <div class="tech-category-header">
-      <span class="tech-cat-tag">Web Framework & Infrastructure</span>
-    </div>
-    <div class="tech-cards">
-
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🐍</span>
-          <div>
-            <h3>Django</h3>
-            <span class="tdc-version">django &gt;= 4.2</span>
-          </div>
-        </div>
-        <p>
-          The backend web framework. Django handles HTTP routing, CSRF
-          protection, session management (for passing scan results to the
-          report page), the ORM (Object Relational Mapper) for storing
-          scan history in SQLite, static file serving, and the template
-          engine that renders the HTML pages you're reading now.
-        </p>
-        <div class="tdc-used-for">Used for: routing · sessions · database ORM · templates · file serving</div>
-      </div>
-
-      <div class="tech-detail-card">
-        <div class="tdc-top">
-          <span class="tdc-icon">🗄️</span>
-          <div>
-            <h3>SQLite</h3>
-            <span class="tdc-version">built into Python</span>
-          </div>
-        </div>
-        <p>
-          A lightweight file-based relational database. Every scan result —
-          health score, sub-scores, detection stats, AI confidence, warnings,
-          and recommendations — is stored as a <code>ScanResult</code> row
-          in SQLite via Django's ORM. No separate database server required.
-        </p>
-        <div class="tdc-used-for">Used for: persistent scan history storage</div>
-      </div>
-
-    </div>
-  </div>
-
-  <div class="info-cta">
-    <a href="{% url 'analyse' %}" class="btn-primary">Try it now <span class="btn-arrow">→</span></a>
-  </div>
-
-</div>
 {% endblock %}
