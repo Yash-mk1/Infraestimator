@@ -154,6 +154,7 @@
           </div>
           <p>
             A managed PostgreSQL database hosted on Supabase. Every scan result — health score, sub-scores, detection stats, AI confidence, warnings, and recommendations — is stored as a <code>ScanResult</code> row, along with user accounts and credentials, accessed through Django's ORM. Supabase was chosen over a self-hosted database because it stays available continuously, unlike ephemeral storage on free-tier hosting.
+            it sends the url of the uploaded image to the backend for processing, and the backend returns the scan results which are then displayed on the report page.
           </p>
           <div class="tdc-used-for">Used for: persistent scan history · user accounts · production database</div>
         </div>
