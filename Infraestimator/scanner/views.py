@@ -1,6 +1,6 @@
 """
 scanner/views.py — MODIFIED
-Added image validation before scan pipeline runs.
+Uses Cloudinary for image storage instead of local disk.
 """
 
 import os
@@ -19,6 +19,7 @@ from django.contrib import messages
 from .analyser import InfrastructureAnalyzer, HealthScorer
 from .models import ScanResult
 from .image_validator import validate_image
+from .cloudinary_helper import upload_and_save_local
 
 
 # ── Public pages ──────────────────────────────────────────────────────────────
@@ -125,18 +126,17 @@ def scan(request):
 
     # ── Validate image ────────────────────────────────────────────────────────
     is_valid, reason, confidence = validate_image(image_bgr)
-
     if not is_valid:
         return render(request, 'scanner/analyse.html', {
-            'error':               reason,
-            'validation_failed':   True,
+            'error':                 reason,
+            'validation_failed':     True,
             'validation_confidence': round(confidence * 100, 1),
         })
 
     # ── Resize if needed ──────────────────────────────────────────────────────
     h, w = image_bgr.shape[:2]
     if max(h, w) > 1600:
-        scale = 1600 / max(h, w)
+        scale     = 1600 / max(h, w)
         image_bgr = cv2.resize(
             image_bgr, (int(w * scale), int(h * scale)),
             interpolation=cv2.INTER_AREA
@@ -148,23 +148,33 @@ def scan(request):
     detection = analyzer.analyze(image_bgr)
     report    = scorer.score(detection, material)
 
-    # ── Save images ───────────────────────────────────────────────────────────
-    uid         = uuid.uuid4().hex[:10]
-    results_dir = os.path.join(settings.MEDIA_ROOT, 'results')
-    os.makedirs(results_dir, exist_ok=True)
+    # ── Upload images to Cloudinary (or local fallback) ───────────────────────
+    uid          = uuid.uuid4().hex[:10]
+    results_dir  = os.path.join(settings.MEDIA_ROOT, 'results')
+    media_prefix = settings.MEDIA_URL + 'results/'
 
     orig_name      = f'original_{uid}.jpg'
     annotated_name = f'annotated_{uid}.jpg'
     heatmap_name   = f'heatmap_{uid}.jpg'
 
-    cv2.imwrite(os.path.join(results_dir, orig_name),      image_bgr)
-    cv2.imwrite(os.path.join(results_dir, annotated_name), detection.annotated_image)
-    cv2.imwrite(os.path.join(results_dir, heatmap_name),   detection.heatmap_image)
-
-    media_prefix  = settings.MEDIA_URL + 'results/'
-    orig_url      = media_prefix + orig_name
-    annotated_url = media_prefix + annotated_name
-    heatmap_url   = media_prefix + heatmap_name
+    orig_url = upload_and_save_local(
+        image_bgr,
+        orig_name,
+        os.path.join(results_dir, orig_name),
+        media_prefix
+    )
+    annotated_url = upload_and_save_local(
+        detection.annotated_image,
+        annotated_name,
+        os.path.join(results_dir, annotated_name),
+        media_prefix
+    )
+    heatmap_url = upload_and_save_local(
+        detection.heatmap_image,
+        heatmap_name,
+        os.path.join(results_dir, heatmap_name),
+        media_prefix
+    )
 
     # ── Save to database ──────────────────────────────────────────────────────
     scan_obj = ScanResult.objects.create(
@@ -193,28 +203,28 @@ def scan(request):
 
     # ── Store in session ──────────────────────────────────────────────────────
     request.session['report'] = {
-        'scan_id':              scan_obj.pk,
-        'timestamp':            report.timestamp,
-        'health_score':         report.health_score,
-        'condition':            report.condition,
-        'estimated_life_years': report.estimated_life_years,
-        'critical':             report.critical,
-        'warnings':             report.warnings,
-        'recommendations':      report.recommendations,
-        'material':             material,
-        'crack_score':          round(detection.crack_score, 2),
-        'seep_score':           round(detection.seep_score, 2),
-        'surface_score':        round(detection.surface_score, 2),
-        'crack_area_pct':       round(detection.crack_area_pct, 3),
-        'seep_area_pct':        round(detection.seep_area_pct, 3),
-        'num_crack_regions':    detection.num_crack_regions,
-        'num_seep_regions':     detection.num_seep_regions,
-        'largest_crack_mm_eq':  detection.largest_crack_mm_eq,
-        'ai_used':              detection.ai_used,
-        'ai_confidence':        round(detection.ai_confidence * 100, 1),
-        'annotated_url':        annotated_url,
-        'heatmap_url':          heatmap_url,
-        'original_url':         orig_url,
+        'scan_id':               scan_obj.pk,
+        'timestamp':             report.timestamp,
+        'health_score':          report.health_score,
+        'condition':             report.condition,
+        'estimated_life_years':  report.estimated_life_years,
+        'critical':              report.critical,
+        'warnings':              report.warnings,
+        'recommendations':       report.recommendations,
+        'material':              material,
+        'crack_score':           round(detection.crack_score, 2),
+        'seep_score':            round(detection.seep_score, 2),
+        'surface_score':         round(detection.surface_score, 2),
+        'crack_area_pct':        round(detection.crack_area_pct, 3),
+        'seep_area_pct':         round(detection.seep_area_pct, 3),
+        'num_crack_regions':     detection.num_crack_regions,
+        'num_seep_regions':      detection.num_seep_regions,
+        'largest_crack_mm_eq':   detection.largest_crack_mm_eq,
+        'ai_used':               detection.ai_used,
+        'ai_confidence':         round(detection.ai_confidence * 100, 1),
+        'annotated_url':         annotated_url,
+        'heatmap_url':           heatmap_url,
+        'original_url':          orig_url,
         'validation_confidence': round(confidence * 100, 1),
     }
 
@@ -268,28 +278,28 @@ def history_detail(request, scan_id):
     else:              score_class = 'failure'
 
     report = {
-        'scan_id':              scan.pk,
-        'timestamp':            scan.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-        'health_score':         scan.health_score,
-        'condition':            scan.condition,
-        'estimated_life_years': scan.estimated_life_years,
-        'critical':             scan.critical,
-        'warnings':             scan.warnings_list(),
-        'recommendations':      scan.recommendations_list(),
-        'material':             scan.material,
-        'crack_score':          scan.crack_score,
-        'seep_score':           scan.seep_score,
-        'surface_score':        scan.surface_score,
-        'crack_area_pct':       scan.crack_area_pct,
-        'seep_area_pct':        scan.seep_area_pct,
-        'num_crack_regions':    scan.num_crack_regions,
-        'num_seep_regions':     scan.num_seep_regions,
-        'largest_crack_mm_eq':  scan.largest_crack_mm_eq,
-        'ai_used':              scan.ai_used,
-        'ai_confidence':        round(scan.ai_confidence * 100, 1),
-        'annotated_url':        scan.annotated_url,
-        'heatmap_url':          scan.heatmap_url,
-        'original_url':         scan.original_url,
+        'scan_id':               scan.pk,
+        'timestamp':             scan.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'health_score':          scan.health_score,
+        'condition':             scan.condition,
+        'estimated_life_years':  scan.estimated_life_years,
+        'critical':              scan.critical,
+        'warnings':              scan.warnings_list(),
+        'recommendations':       scan.recommendations_list(),
+        'material':              scan.material,
+        'crack_score':           scan.crack_score,
+        'seep_score':            scan.seep_score,
+        'surface_score':         scan.surface_score,
+        'crack_area_pct':        scan.crack_area_pct,
+        'seep_area_pct':         scan.seep_area_pct,
+        'num_crack_regions':     scan.num_crack_regions,
+        'num_seep_regions':      scan.num_seep_regions,
+        'largest_crack_mm_eq':   scan.largest_crack_mm_eq,
+        'ai_used':               scan.ai_used,
+        'ai_confidence':         round(scan.ai_confidence * 100, 1),
+        'annotated_url':         scan.annotated_url,
+        'heatmap_url':           scan.heatmap_url,
+        'original_url':          scan.original_url,
         'validation_confidence': 100,
     }
 
