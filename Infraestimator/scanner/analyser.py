@@ -436,7 +436,7 @@ class HealthScorer:
         if result.crack_spread > 0.7:        damage = min(10, damage + 0.8)
         if result.seep_area_pct > 15:        damage = min(10, damage + 0.6)
 
-        health = round(max(0.0, 10.0 - damage), 1)
+        health = round(max(1.5, 10.0 - damage), 1)
         report.health_score = health
 
         if   health >= 8.5: report.condition = 'Excellent'
@@ -449,7 +449,7 @@ class HealthScorer:
             report.critical  = True
 
         base = self.MATERIAL_LIFETIMES.get(material, 50)
-        report.estimated_life_years = round(base * (health/10.0)**1.5, 1)
+        report.estimated_life_years = round(max(base * (health/10.0)**1.5, 1))
 
         if result.crack_score > 5:
             report.warnings.append(
