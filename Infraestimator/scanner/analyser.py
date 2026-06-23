@@ -187,66 +187,53 @@ class InfrastructureAnalyzer:
 
     # ── Wall isolation ────────────────────────────────────────────────────────
     def _get_wall_mask(self, image_bgr: np.ndarray,
-                    gray: np.ndarray) -> np.ndarray:
+                       gray: np.ndarray) -> np.ndarray:
+        """
+        Finds the dominant flat surface (the wall).
+        Strategy:
+          1. Detect edges — walls have low edge density in their interior
+          2. Find the largest low-texture region — that's the wall
+          3. Expand it slightly to include surface cracks
+        """
         h, w = gray.shape
 
-        # ── Step 1: Edge density map ──────────────────────────
+        # Edge density map
         edges = cv2.Canny(
             cv2.GaussianBlur(gray, (5, 5), 1), 30, 100
         )
+
+        # Dilate edges so object boundaries are thick
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
         edge_regions = cv2.dilate(edges, k, iterations=2)
+
+        # Low-edge areas = potential wall surface
         low_edge = cv2.bitwise_not(edge_regions)
 
-        # ── Step 2: Exclude window-like regions ───────────────
-        # Windows are: very dark OR very bright (reflective glass)
-        # with rectangular shape and high internal uniformity
-        hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
-        val = hsv[:, :, 2]
+        # Find the largest connected low-edge region
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+            low_edge, connectivity=8
+        )
 
-        # Very dark regions (window interiors)
-        very_dark = (val < 40).astype(np.uint8) * 255
-        # Very bright regions (glass reflections, sky in window)
-        very_bright = (val > 220).astype(np.uint8) * 255
-        # High saturation non-wall objects (railings, pipes, signs)
-        sat = hsv[:, :, 1]
-        high_sat_objects = (sat > 120).astype(np.uint8) * 255
-
-        # Combine exclusion zones
-        exclude = cv2.bitwise_or(very_dark, very_bright)
-        exclude = cv2.bitwise_or(exclude, high_sat_objects)
-
-        # Dilate exclusion zones to cover object borders
-        k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
-        exclude = cv2.dilate(exclude, k2, iterations=2)
-
-        # ── Step 3: Find largest flat non-excluded region ─────
-        candidate = cv2.bitwise_and(low_edge,
-                                    cv2.bitwise_not(exclude))
-
-        num_labels, labels, stats, _ = \
-            cv2.connectedComponentsWithStats(candidate,
-                                            connectivity=8)
-
+        # Pick top 3 largest regions (excluding background label 0)
         region_sizes = [(stats[i, cv2.CC_STAT_AREA], i)
                         for i in range(1, num_labels)]
         region_sizes.sort(reverse=True)
 
         wall_mask = np.zeros((h, w), dtype=np.uint8)
+        # Include top 3 largest flat regions (handles walls with multiple sections)
         for _, idx in region_sizes[:3]:
             wall_mask[labels == idx] = 255
 
-        # ── Step 4: Morphological closing to fill crack gaps ──
-        k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
-        wall_mask = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE,
-                                    k3, iterations=3)
+        # Morphological closing to fill small holes (cracks break up regions)
+        k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+        wall_mask = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, k2, iterations=3)
 
-        # ── Step 5: Fallback if wall too small ────────────────
-        if np.sum(wall_mask > 0) < (h * w * 0.25):
-            # Use full image minus obvious objects
-            wall_mask = cv2.bitwise_not(exclude)
+        # If wall mask is too small (< 30% of image), just use full image
+        # This prevents over-aggressive masking on close-up shots
+        if np.sum(wall_mask > 0) < (h * w * 0.30):
+            wall_mask = np.ones((h, w), dtype=np.uint8) * 255
 
-        return wall_mask   
+        return wall_mask
 
     # ── Shadow rejection ──────────────────────────────────────────────────────
     def _get_shadow_mask(self, hsv: np.ndarray,
