@@ -23,7 +23,7 @@ import numpy as np
 # Each check produces a score 0-1. Final confidence = weighted average.
 # If confidence < ACCEPT_THRESHOLD → reject.
 
-ACCEPT_THRESHOLD = 0.42   # below this → reject
+ACCEPT_THRESHOLD = 0.32   # below this → reject
 HARD_REJECT      = 0.25   # below this → reject with strong message
 
 
@@ -54,14 +54,14 @@ def validate_image(image_bgr: np.ndarray) -> tuple:
     high_sat_pct = float(np.mean(sat > 80)) * 100
 
     # Low mean saturation → good (structural)
-    if mean_sat < 25:
+    if mean_sat < 40:
         sat_score = 1.0
-    elif mean_sat < 50:
-        sat_score = 0.8
     elif mean_sat < 80:
-        sat_score = 0.5
-    elif mean_sat < 110:
-        sat_score = 0.25
+        sat_score = 0.75
+    elif mean_sat < 120:
+        sat_score = 0.55
+    elif mean_sat < 160:
+        sat_score = 0.35
     else:
         sat_score = 0.0
 
@@ -88,11 +88,11 @@ def validate_image(image_bgr: np.ndarray) -> tuple:
         # Vivid blue range
         blue_pct  = float(np.mean((hue_coloured > 100) & (hue_coloured < 130))) * 100
 
-        if green_pct > 30:
+        if green_pct > 50:
             colour_score = 0.1   # likely nature / vegetation
-        elif green_pct > 15:
-            colour_score = 0.4
-        elif blue_pct > 40:
+        elif green_pct > 30:
+            colour_score = 0.5
+        elif blue_pct > 70:
             colour_score = 0.3   # likely sky / water
         else:
             colour_score = 0.85
