@@ -114,7 +114,7 @@ class InfrastructureAnalyzer:
             ai_sf     = ai_seep.astype(np.float32)    / 255.0 * self.AI_WEIGHT
             cv_sf     = opencv_seep.astype(np.float32)/ 255.0 * self.CV_WEIGHT
             blended_s = np.clip(ai_sf + cv_sf, 0, 1)
-            seep_mask = (blended_s >= 0.40).astype(np.uint8) * 255
+            seep_mask = (blended_s >= 0.60).astype(np.uint8) * 255
             result.seep_ai_used = True
         else:
             seep_mask = opencv_seep
