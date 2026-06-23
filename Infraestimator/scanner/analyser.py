@@ -246,7 +246,7 @@ class InfrastructureAnalyzer:
             # Use full image minus obvious objects
             wall_mask = cv2.bitwise_not(exclude)
 
-            return wall_mask   
+        return wall_mask   
 
     # ── Shadow rejection ──────────────────────────────────────────────────────
     def _get_shadow_mask(self, hsv: np.ndarray,
