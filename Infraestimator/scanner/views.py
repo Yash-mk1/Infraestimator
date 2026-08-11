@@ -309,3 +309,8 @@ def history_detail(request, scan_id):
         'score_pct':    int((scan.health_score / 10) * 100),
         'from_history': True,
     })
+def health_check(request):
+    from django.http import JsonResponse
+    from .models import ScanResult
+    count = ScanResult.objects.count()
+    return JsonResponse({'status': 'ok', 'scans': count})
