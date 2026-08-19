@@ -1,6 +1,6 @@
 """
 scanner/views.py — MODIFIED
-Uses Cloudinary for image storage instead of local disk.
+Added rate limiting on login, signup, and scan endpoints.
 """
 
 import os
@@ -15,6 +15,10 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import JsonResponse
+
+from django_ratelimit.decorators import ratelimit
+from django_ratelimit.exceptions import Ratelimited
 
 from .analyser import InfrastructureAnalyzer, HealthScorer
 from .models import ScanResult
@@ -38,8 +42,47 @@ def technology(request):
 def docs(request):
     return render(request, 'scanner/docs.html')
 
+def health_check(request):
+    """Keep Supabase alive — ping this every few days via UptimeRobot."""
+    count = ScanResult.objects.count()
+    return JsonResponse({'status': 'ok', 'scans': count})
+
+
+# ── 403 / Rate limit handler ──────────────────────────────────────────────────
+def handler403(request, exception=None):
+    if isinstance(exception, Ratelimited):
+        # Work out which page to return the error on
+        path = request.path
+        if 'scan' in path:
+            return render(request, 'scanner/analyse.html', {
+                'error': (
+                    '⚠ Too many scans. You can run up to 20 scans per hour. '
+                    'Please wait and try again.'
+                )
+            }, status=429)
+        elif 'login' in path:
+            return render(request, 'scanner/login.html', {
+                'error': (
+                    '⚠ Too many login attempts. '
+                    'Please wait 1 minute and try again.'
+                ),
+                'next': request.GET.get('next', '')
+            }, status=429)
+        elif 'signup' in path:
+            return render(request, 'scanner/signup.html', {
+                'error': (
+                    '⚠ Too many signup attempts from this network. '
+                    'Please wait an hour and try again.'
+                )
+            }, status=429)
+    return render(request, 'scanner/analyse.html', {
+        'error': 'Access denied.'
+    }, status=403)
+
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
+
+@ratelimit(key='ip', rate='3/h', method='POST', block=True)
 def signup_view(request):
     if request.user.is_authenticated:
         return redirect('home')
@@ -69,6 +112,7 @@ def signup_view(request):
     return render(request, 'scanner/signup.html')
 
 
+@ratelimit(key='ip', rate='5/m', method='POST', block=True)
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('home')
@@ -96,6 +140,7 @@ def logout_view(request):
 
 
 # ── Scan ──────────────────────────────────────────────────────────────────────
+@ratelimit(key='user', rate='20/h', method='POST', block=True)
 @login_required(login_url='/login/')
 def scan(request):
     if request.method != 'POST':
@@ -148,7 +193,7 @@ def scan(request):
     detection = analyzer.analyze(image_bgr)
     report    = scorer.score(detection, material)
 
-    # ── Upload images to Cloudinary (or local fallback) ───────────────────────
+    # ── Upload images ─────────────────────────────────────────────────────────
     uid          = uuid.uuid4().hex[:10]
     results_dir  = os.path.join(settings.MEDIA_ROOT, 'results')
     media_prefix = settings.MEDIA_URL + 'results/'
@@ -158,22 +203,16 @@ def scan(request):
     heatmap_name   = f'heatmap_{uid}.jpg'
 
     orig_url = upload_and_save_local(
-        image_bgr,
-        orig_name,
-        os.path.join(results_dir, orig_name),
-        media_prefix
+        image_bgr, orig_name,
+        os.path.join(results_dir, orig_name), media_prefix
     )
     annotated_url = upload_and_save_local(
-        detection.annotated_image,
-        annotated_name,
-        os.path.join(results_dir, annotated_name),
-        media_prefix
+        detection.annotated_image, annotated_name,
+        os.path.join(results_dir, annotated_name), media_prefix
     )
     heatmap_url = upload_and_save_local(
-        detection.heatmap_image,
-        heatmap_name,
-        os.path.join(results_dir, heatmap_name),
-        media_prefix
+        detection.heatmap_image, heatmap_name,
+        os.path.join(results_dir, heatmap_name), media_prefix
     )
 
     # ── Save to database ──────────────────────────────────────────────────────
@@ -309,8 +348,3 @@ def history_detail(request, scan_id):
         'score_pct':    int((scan.health_score / 10) * 100),
         'from_history': True,
     })
-def health_check(request):
-    from django.http import JsonResponse
-    from .models import ScanResult
-    count = ScanResult.objects.count()
-    return JsonResponse({'status': 'ok', 'scans': count})
