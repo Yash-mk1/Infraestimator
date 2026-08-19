@@ -235,7 +235,7 @@ class InfrastructureAnalyzer:
         try:
             results = model.predict(
                 source=image_bgr,
-                conf=0.40,          # only confident detections
+                conf=0.65,          # only confident detections
                 verbose=False
             )[0]
         except Exception as e:
@@ -261,10 +261,13 @@ class InfrastructureAnalyzer:
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
 
-            # Skip if box is too large (>70% of image) — probably mislabelled wall
+            # Skip if box is too large (>50% of image) — probably mislabelled wall
             box_area = (x2 - x1) * (y2 - y1)
-            if box_area > (h * w * 0.70):
+            if box_area > (h * w * 0.50):
                 print(f"[ObjRemoval] Skipping {label} — box too large ({box_area/(h*w)*100:.0f}% of image)")
+                continue
+            # Skip tiny detections — real people aren't tiny blobs
+            if box_area < (h * w * 0.02):   # skip if < 2% of image
                 continue
 
             removal_mask[y1:y2, x1:x2] = 255
