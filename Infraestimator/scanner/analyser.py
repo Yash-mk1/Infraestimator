@@ -1,8 +1,3 @@
-"""
-scanner/analyser.py — MODIFIED
-Added foreground object removal (people, cars, furniture)
-before crack/seep analysis runs.
-"""
 
 import cv2
 import numpy as np
@@ -14,69 +9,24 @@ from skimage import morphology, measure
 
 from .ai_model import AIDetector
 
-# ── COCO classes to remove before analysis ────────────────────────────────────
-# These are objects that should never be analysed as structural damage
-REMOVE_CLASSES = {
-    0:  'person',
-    1:  'bicycle',
-    2:  'car',
-    3:  'motorcycle',
-    5:  'bus',
-    7:  'truck',
-    14: 'bird',
-    15: 'cat',
-    16: 'dog',
-    17: 'horse',
-    56: 'chair',
-    57: 'couch',
-    58: 'potted plant',
-    59: 'bed',
-    60: 'dining table',
-    62: 'tv',
-    63: 'laptop',
-    64: 'mouse',
-    67: 'cell phone',
-    73: 'book',
-    76: 'scissors',
-    77: 'teddy bear',
-}
-
-# Cached COCO model — loaded once
-_coco_model = None
-
-def _get_coco_model():
-    global _coco_model
-    if _coco_model is not None:
-        return _coco_model
-    try:
-        from ultralytics import YOLO
-        # yolov8n.pt is pretrained on COCO — downloads automatically (~6MB)
-        _coco_model = YOLO('yolov8n.pt')
-        print("[ObjRemoval] COCO model loaded.")
-        return _coco_model
-    except Exception as e:
-        print(f"[ObjRemoval] Could not load COCO model: {e}")
-        return None
-
 
 @dataclass
 class DetectionResult:
-    crack_score:          float = 0.0
-    seep_score:           float = 0.0
-    surface_score:        float = 0.0
-    crack_area_pct:       float = 0.0
-    seep_area_pct:        float = 0.0
-    num_crack_regions:    int   = 0
-    num_seep_regions:     int   = 0
-    largest_crack_mm_eq:  float = 0.0
-    crack_spread:         float = 0.0
-    ai_used:              bool  = False
-    ai_confidence:        float = 0.0
-    crack_ai_used:        bool  = False
-    seep_ai_used:         bool  = False
-    objects_removed:      list  = field(default_factory=list)  # e.g. ['person', 'car']
-    annotated_image:      Optional[np.ndarray] = field(default=None, repr=False)
-    heatmap_image:        Optional[np.ndarray] = field(default=None, repr=False)
+    crack_score:         float = 0.0
+    seep_score:          float = 0.0
+    surface_score:       float = 0.0
+    crack_area_pct:      float = 0.0
+    seep_area_pct:       float = 0.0
+    num_crack_regions:   int   = 0
+    num_seep_regions:    int   = 0
+    largest_crack_mm_eq: float = 0.0
+    crack_spread:        float = 0.0
+    ai_used:             bool  = False
+    ai_confidence:       float = 0.0
+    crack_ai_used:       bool  = False
+    seep_ai_used:        bool  = False
+    annotated_image:     Optional[np.ndarray] = field(default=None, repr=False)
+    heatmap_image:       Optional[np.ndarray] = field(default=None, repr=False)
 
 
 @dataclass
@@ -96,8 +46,8 @@ class HealthReport:
 
 class InfrastructureAnalyzer:
     MIN_REGION_AREA = 60
-    AI_WEIGHT       = 0.60
-    CV_WEIGHT       = 0.40
+    AI_WEIGHT       = 0.60   # AI contributes 60%
+    CV_WEIGHT       = 0.40   # OpenCV contributes 40%
 
     def __init__(self):
         self._ai = AIDetector()
@@ -106,46 +56,48 @@ class InfrastructureAnalyzer:
         result   = DetectionResult()
         h, w     = image_bgr.shape[:2]
         total_px = h * w
+        gray     = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+        hsv      = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
 
-        # ── Step 0: Remove foreground objects (people, cars etc.) ─────────────
-        cleaned_image, removed = self._remove_foreground_objects(image_bgr)
-        result.objects_removed = removed
-        if removed:
-            print(f"[ObjRemoval] Removed: {', '.join(removed)}")
+        # ── Step 1: Isolate wall region ───────────────────────────────────────
+        wall_mask = self._get_wall_mask(image_bgr, gray)
 
-        # Use cleaned image for all analysis
-        gray = cv2.cvtColor(cleaned_image, cv2.COLOR_BGR2GRAY)
-        hsv  = cv2.cvtColor(cleaned_image, cv2.COLOR_BGR2HSV)
-
-        # ── Step 1: Wall isolation ────────────────────────────────────────────
-        wall_mask = self._get_wall_mask(cleaned_image, gray)
-
-        # ── Step 2: Shadow rejection ──────────────────────────────────────────
+        # ── Step 2: Reject shadows ────────────────────────────────────────────
         shadow_mask    = self._get_shadow_mask(hsv, gray)
         no_shadow_mask = cv2.bitwise_not(shadow_mask)
-        analysis_zone  = cv2.bitwise_and(wall_mask, no_shadow_mask)
 
-        # ── Step 3: AI detection ──────────────────────────────────────────────
-        ai_result = self._ai.predict(cleaned_image)
+        # Analysis zone = wall area minus shadows
+        analysis_zone = cv2.bitwise_and(wall_mask, no_shadow_mask)
 
-        # ── Step 4: Crack masks ───────────────────────────────────────────────
+        # ── Step 3: Run AI ────────────────────────────────────────────────────
+        ai_result = self._ai.predict(image_bgr)
+
+        # ── Step 4: Get OpenCV crack mask ─────────────────────────────────────
         opencv_crack = self._opencv_cracks(gray)
 
+        # ── Step 5: Weighted 60/40 merge for cracks ───────────────────────────
         if ai_result.get('crack_ai_available') and ai_result['crack_mask'] is not None:
-            ai_crack     = ai_result['crack_mask']
-            ai_f         = ai_crack.astype(np.float32)    / 255.0 * self.AI_WEIGHT
-            cv_f         = opencv_crack.astype(np.float32)/ 255.0 * self.CV_WEIGHT
-            blended      = np.clip(ai_f + cv_f, 0, 1)
-            crack_mask   = (blended >= 0.40).astype(np.uint8) * 255
+            ai_crack = ai_result['crack_mask']
+
+            # Weighted blend: AI=60%, OpenCV=40%
+            ai_float  = ai_crack.astype(np.float32)   / 255.0 * self.AI_WEIGHT
+            cv_float  = opencv_crack.astype(np.float32)/ 255.0 * self.CV_WEIGHT
+            blended   = np.clip(ai_float + cv_float, 0, 1)
+
+            # Threshold: pixel needs at least 40% combined confidence to count
+            crack_mask = (blended >= 0.40).astype(np.uint8) * 255
             result.crack_ai_used = True
         else:
             crack_mask = opencv_crack
             result.crack_ai_used = False
 
+        # ── Step 6: Apply analysis zone (remove shadows + non-wall) ──────────
         crack_mask = cv2.bitwise_and(crack_mask, analysis_zone)
+
+        # ── Step 7: Filter false positives ───────────────────────────────────
         crack_mask = self._filter_false_positives(crack_mask)
 
-        # ── Step 5: Seep masks ────────────────────────────────────────────────
+        # ── Step 8: Seep masks with same 60/40 weighting ─────────────────────
         opencv_seep = self._opencv_seeps(hsv, gray)
 
         if ai_result.get('seep_ai_available') and ai_result['seep_mask'] is not None:
@@ -153,12 +105,13 @@ class InfrastructureAnalyzer:
             ai_sf     = ai_seep.astype(np.float32)    / 255.0 * self.AI_WEIGHT
             cv_sf     = opencv_seep.astype(np.float32)/ 255.0 * self.CV_WEIGHT
             blended_s = np.clip(ai_sf + cv_sf, 0, 1)
-            seep_mask = (blended_s >= 0.40).astype(np.uint8) * 255
+            seep_mask = (blended_s >= 0.60).astype(np.uint8) * 255
             result.seep_ai_used = True
         else:
             seep_mask = opencv_seep
             result.seep_ai_used = False
 
+        # Remove seep detections inside crack regions (avoid overlap)
         seep_mask = cv2.bitwise_and(seep_mask, cv2.bitwise_not(
             cv2.dilate(crack_mask,
                        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7)),
@@ -181,6 +134,7 @@ class InfrastructureAnalyzer:
         if c_regions:
             largest = max(c_regions, key=lambda r: r.area)
             result.largest_crack_mm_eq = round(np.sqrt(largest.area) * 0.05, 2)
+
             crack_coords = np.column_stack(np.where(crack_mask > 0))
             if len(crack_coords) > 0:
                 y_min, x_min = crack_coords.min(axis=0)
@@ -193,12 +147,17 @@ class InfrastructureAnalyzer:
         area_score   = min(10.0, np.log1p(result.crack_area_pct * 30) * 2.2)
         spread_score = min(10.0, result.crack_spread * 12.0)
         region_score = min(10.0, np.log1p(result.num_crack_regions) * 3.5)
+
         result.crack_score = min(10.0,
-            area_score*0.30 + spread_score*0.45 + region_score*0.25)
+            area_score   * 0.30 +
+            spread_score * 0.45 +
+            region_score * 0.25
+        )
 
         # ── Seep metrics ──────────────────────────────────────────────────────
         seep_px = int(np.sum(seep_mask > 0))
         result.seep_area_pct = (seep_px / total_px) * 100
+
         s_labeled, _ = ndimage.label(seep_mask)
         s_regions = [r for r in measure.regionprops(s_labeled)
                      if r.area >= self.MIN_REGION_AREA]
@@ -210,187 +169,150 @@ class InfrastructureAnalyzer:
 
         # ── Visuals ───────────────────────────────────────────────────────────
         result.annotated_image = self._annotate(
-            cleaned_image.copy(), crack_mask, seep_mask,
+            image_bgr.copy(), crack_mask, seep_mask,
             shadow_mask, wall_mask, result
         )
         result.heatmap_image = self._build_heatmap(gray, crack_mask, seep_mask)
 
         return result
 
-    # ── Foreground object removal ─────────────────────────────────────────────
-
-    def _remove_foreground_objects(self, image_bgr: np.ndarray):
+    # ── Wall isolation ────────────────────────────────────────────────────────
+    def _get_wall_mask(self, image_bgr: np.ndarray,
+                       gray: np.ndarray) -> np.ndarray:
         """
-        Detect people and objects using YOLOv8n (COCO pretrained).
-        Fill detected regions with inpainted wall texture.
-        Returns (cleaned_image, list_of_removed_labels).
+        Finds the dominant flat surface (the wall).
+        Strategy:
+          1. Detect edges — walls have low edge density in their interior
+          2. Find the largest low-texture region — that's the wall
+          3. Expand it slightly to include surface cracks
         """
-        model = _get_coco_model()
-        if model is None:
-            return image_bgr, []
+        h, w = gray.shape
 
-        h, w = image_bgr.shape[:2]
-        removed_labels = []
-
-        try:
-            results = model.predict(
-                source=image_bgr,
-                conf=0.65,          # only confident detections
-                verbose=False
-            )[0]
-        except Exception as e:
-            print(f"[ObjRemoval] Inference error: {e}")
-            return image_bgr, []
-
-        if results.boxes is None or len(results.boxes) == 0:
-            return image_bgr, []
-
-        # Build a combined mask of all objects to remove
-        removal_mask = np.zeros((h, w), dtype=np.uint8)
-
-        boxes   = results.boxes.xyxy.cpu().numpy().astype(int)
-        classes = results.boxes.cls.cpu().numpy().astype(int)
-        confs   = results.boxes.conf.cpu().numpy()
-
-        for box, cls_id, conf in zip(boxes, classes, confs):
-            if cls_id not in REMOVE_CLASSES:
-                continue
-
-            label = REMOVE_CLASSES[cls_id]
-            x1, y1, x2, y2 = box
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w, x2), min(h, y2)
-
-            # Skip if box is too large (>50% of image) — probably mislabelled wall
-            box_area = (x2 - x1) * (y2 - y1)
-            if box_area > (h * w * 0.50):
-                print(f"[ObjRemoval] Skipping {label} — box too large ({box_area/(h*w)*100:.0f}% of image)")
-                continue
-            # Skip tiny detections — real people aren't tiny blobs
-            if box_area < (h * w * 0.02):   # skip if < 2% of image
-                continue
-
-            removal_mask[y1:y2, x1:x2] = 255
-
-            if label not in removed_labels:
-                removed_labels.append(label)
-
-        if np.sum(removal_mask) == 0:
-            return image_bgr, []
-
-        # ── Inpaint: fill removed regions with surrounding wall texture ───────
-        # Dilate mask slightly to cover object edges cleanly
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        removal_mask_dilated = cv2.dilate(removal_mask, k, iterations=1)
-
-        # cv2.inpaint fills the masked region by propagating surrounding pixels
-        # INPAINT_TELEA gives better results for textured surfaces
-        cleaned = cv2.inpaint(
-            image_bgr,
-            removal_mask_dilated,
-            inpaintRadius=12,
-            flags=cv2.INPAINT_TELEA
+        # Edge density map
+        edges = cv2.Canny(
+            cv2.GaussianBlur(gray, (5, 5), 1), 30, 100
         )
 
-        return cleaned, removed_labels
-
-    # ── Wall isolation ────────────────────────────────────────────────────────
-
-    def _get_wall_mask(self, image_bgr, gray):
-        h, w = gray.shape
-        edges = cv2.Canny(cv2.GaussianBlur(gray, (5,5), 1), 30, 100)
-        k = cv2.getStructuringElement(cv2.MORPH_RECT, (15,15))
+        # Dilate edges so object boundaries are thick
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
         edge_regions = cv2.dilate(edges, k, iterations=2)
+
+        # Low-edge areas = potential wall surface
         low_edge = cv2.bitwise_not(edge_regions)
 
-        hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
-        val = hsv[:,:,2]
-        sat = hsv[:,:,1]
-
-        very_dark   = (val < 40).astype(np.uint8) * 255
-        very_bright = (val > 220).astype(np.uint8) * 255
-        high_sat    = (sat > 120).astype(np.uint8) * 255
-
-        exclude = cv2.bitwise_or(very_dark, very_bright)
-        exclude = cv2.bitwise_or(exclude, high_sat)
-
-        k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (25,25))
-        exclude = cv2.dilate(exclude, k2, iterations=2)
-
-        candidate = cv2.bitwise_and(low_edge, cv2.bitwise_not(exclude))
+        # Find the largest connected low-edge region
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-            candidate, connectivity=8
+            low_edge, connectivity=8
         )
+
+        # Pick top 3 largest regions (excluding background label 0)
         region_sizes = [(stats[i, cv2.CC_STAT_AREA], i)
                         for i in range(1, num_labels)]
         region_sizes.sort(reverse=True)
 
         wall_mask = np.zeros((h, w), dtype=np.uint8)
+        # Include top 3 largest flat regions (handles walls with multiple sections)
         for _, idx in region_sizes[:3]:
             wall_mask[labels == idx] = 255
 
-        k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35,35))
-        wall_mask = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, k3, iterations=3)
+        # Morphological closing to fill small holes (cracks break up regions)
+        k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+        wall_mask = cv2.morphologyEx(wall_mask, cv2.MORPH_CLOSE, k2, iterations=3)
 
-        if np.sum(wall_mask > 0) < (h * w * 0.25):
-            wall_mask = cv2.bitwise_not(exclude)
+        # If wall mask is too small (< 30% of image), just use full image
+        # This prevents over-aggressive masking on close-up shots
+        if np.sum(wall_mask > 0) < (h * w * 0.30):
+            wall_mask = np.ones((h, w), dtype=np.uint8) * 255
 
         return wall_mask
 
     # ── Shadow rejection ──────────────────────────────────────────────────────
-
-    def _get_shadow_mask(self, hsv, gray):
+    def _get_shadow_mask(self, hsv: np.ndarray,
+                         gray: np.ndarray) -> np.ndarray:
+        """
+        Detects cast shadows — areas that are:
+          • Dark (low V in HSV)
+          • Low saturation (shadows desaturate colours)
+          • Have smooth gradients (not sharp crack edges)
+          • Spatially large (shadows are bigger than cracks)
+        """
         h_ch, s_ch, v_ch = cv2.split(hsv)
+
+        # Shadows: very dark + low saturation
         dark_low_sat = cv2.bitwise_and(
             (v_ch < 60).astype(np.uint8) * 255,
             (s_ch < 40).astype(np.uint8) * 255
         )
+
+        # Smooth gradient check — shadows have gradual edges
+        # Cracks have sharp edges, so remove sharp-edge dark regions
         laplacian  = cv2.Laplacian(gray, cv2.CV_64F)
         sharp_mask = (np.abs(laplacian) > 25).astype(np.uint8) * 255
+
+        # Shadow = dark+low_sat but NOT sharp edges
         shadow_candidate = cv2.bitwise_and(
             dark_low_sat, cv2.bitwise_not(sharp_mask)
         )
+
+        # Shadows are large blobs — remove tiny ones (those are dirt/stains)
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
             shadow_candidate, connectivity=8
         )
-        shadow_mask   = np.zeros_like(shadow_candidate)
-        min_shadow_area = gray.shape[0] * gray.shape[1] * 0.005
+        shadow_mask = np.zeros_like(shadow_candidate)
+        min_shadow_area = gray.shape[0] * gray.shape[1] * 0.005  # 0.5% of image
+
         for i in range(1, num_labels):
             if stats[i, cv2.CC_STAT_AREA] >= min_shadow_area:
                 shadow_mask[labels == i] = 255
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-        return cv2.erode(shadow_mask, k, iterations=1)
+
+        # Slightly erode — be conservative, don't remove too much
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        shadow_mask = cv2.erode(shadow_mask, k, iterations=1)
+
+        return shadow_mask
 
     # ── False positive filter ─────────────────────────────────────────────────
-
-    def _filter_false_positives(self, crack_mask):
+    def _filter_false_positives(self, crack_mask: np.ndarray) -> np.ndarray:
+        """
+        Removes blobs that don't look like cracks:
+          • Too round (circularity > 0.6) — cracks are elongated
+          • Too large and blobby — likely a shadow or object edge
+          • Wrong aspect ratio — cracks are thin and long
+        """
         labeled, _ = ndimage.label(crack_mask)
         regions    = measure.regionprops(labeled)
         clean      = np.zeros_like(crack_mask)
+
         for r in regions:
             if r.area < self.MIN_REGION_AREA:
                 continue
+
+            # Circularity: 4π·area/perimeter² — cracks are low (~0.0–0.3)
             perimeter = r.perimeter if r.perimeter > 0 else 1
             circularity = (4 * np.pi * r.area) / (perimeter ** 2)
             if circularity > 0.65:
-                continue
+                continue   # too round → not a crack
+
+            # Aspect ratio from bounding box
             bbox_h = r.bbox[2] - r.bbox[0]
             bbox_w = r.bbox[3] - r.bbox[1]
             if bbox_h == 0 or bbox_w == 0:
                 continue
-            if max(bbox_h, bbox_w) / min(bbox_h, bbox_w) < 1.8:
-                continue
+            aspect = max(bbox_h, bbox_w) / min(bbox_h, bbox_w)
+            if aspect < 1.8:
+                continue   # too square → not a crack
+
             clean[labeled == r.label] = 255
+
         return clean
 
     # ── OpenCV crack detection ────────────────────────────────────────────────
-
-    def _opencv_cracks(self, gray):
-        blurred  = cv2.GaussianBlur(gray, (5,5), 1.2)
-        clahe    = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
+    def _opencv_cracks(self, gray: np.ndarray) -> np.ndarray:
+        blurred  = cv2.GaussianBlur(gray, (5, 5), 1.2)
+        clahe    = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         enhanced = clahe.apply(blurred)
         edges    = cv2.Canny(enhanced, 30, 120)
-        kernel   = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        kernel   = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         dilated  = cv2.dilate(edges, kernel, iterations=1)
         skeleton = morphology.skeletonize((dilated > 0).astype(bool))
         labeled, _ = ndimage.label(skeleton)
@@ -399,8 +321,8 @@ class InfrastructureAnalyzer:
         return (mask[labeled] * 255).astype(np.uint8)
 
     # ── OpenCV seep detection ─────────────────────────────────────────────────
-
-    def _opencv_seeps(self, hsv, gray):
+    def _opencv_seeps(self, hsv: np.ndarray,
+                      gray: np.ndarray) -> np.ndarray:
         h_ch, s_ch, v_ch = cv2.split(hsv)
         dark     = (v_ch < 85).astype(np.uint8) * 255
         wet      = (s_ch > 45).astype(np.uint8) * 255
@@ -408,64 +330,67 @@ class InfrastructureAnalyzer:
         moisture = cv2.inRange(hsv, (85, 20,  30), (135, 255, 160))
         combined = cv2.bitwise_or(cv2.bitwise_and(dark, wet),
                                   cv2.bitwise_or(rust, moisture))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
         return cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=2)
 
     # ── Surface degradation ───────────────────────────────────────────────────
-
-    def _surface_degradation_score(self, gray, wall_mask):
+    def _surface_degradation_score(self, gray: np.ndarray,
+                                   wall_mask: np.ndarray) -> float:
+        # Only measure degradation on the wall region
         wall_gray = cv2.bitwise_and(gray, wall_mask)
-        blurred   = cv2.GaussianBlur(wall_gray.astype(np.float32), (15,15), 0)
+        blurred   = cv2.GaussianBlur(wall_gray.astype(np.float32), (15, 15), 0)
         diff      = (wall_gray.astype(np.float32) - blurred) ** 2
-        local_var = cv2.GaussianBlur(diff, (31,31), 0)
+        local_var = cv2.GaussianBlur(diff, (31, 31), 0)
         high_var  = float(np.mean(local_var > 300))
         lap_var   = float(cv2.Laplacian(wall_gray, cv2.CV_64F).var())
         sharpness = min(1.0, lap_var / 500.0)
         return min(10.0, (high_var * 6.0) + ((1.0 - sharpness) * 4.0))
 
     # ── Annotate ──────────────────────────────────────────────────────────────
-
     def _annotate(self, img, crack_mask, seep_mask,
-                  shadow_mask, wall_mask, result):
+                  shadow_mask, wall_mask, result) -> np.ndarray:
         overlay = img.copy()
+
+        # Show excluded shadow regions in dark blue tint
         overlay[shadow_mask > 0] = (
             overlay[shadow_mask > 0] * 0.5 +
             np.array([40, 20, 0], dtype=np.float32)
         ).clip(0, 255).astype(np.uint8)
+
         overlay[crack_mask > 0] = [0, 0, 220]
         overlay[seep_mask  > 0] = [200, 100, 0]
+
         annotated = cv2.addWeighted(img, 0.55, overlay, 0.45, 0)
 
         for r in measure.regionprops(ndimage.label(crack_mask)[0]):
             if r.area < self.MIN_REGION_AREA: continue
             y, x = int(r.centroid[0]), int(r.centroid[1])
-            cv2.circle(annotated, (x,y), 6, (0,0,255), -1)
-            cv2.putText(annotated, 'CRACK', (x+8,y+4),
+            cv2.circle(annotated, (x, y), 6, (0, 0, 255), -1)
+            cv2.putText(annotated, 'CRACK', (x+8, y+4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 1, cv2.LINE_AA)
 
         for r in measure.regionprops(ndimage.label(seep_mask)[0]):
             if r.area < self.MIN_REGION_AREA: continue
             y, x = int(r.centroid[0]), int(r.centroid[1])
-            cv2.circle(annotated, (x,y), 6, (200,80,0), -1)
-            cv2.putText(annotated, 'SEEP', (x+8,y+4),
+            cv2.circle(annotated, (x, y), 6, (200, 80, 0), -1)
+            cv2.putText(annotated, 'SEEP', (x+8, y+4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200,80,0), 1, cv2.LINE_AA)
 
         h, w = annotated.shape[:2]
-        cv2.rectangle(annotated, (0,0), (w,28), (20,20,20), -1)
-        crack_src = f'AI+CV' if result.crack_ai_used else 'CV'
-        seep_src  = f'AI+CV' if result.seep_ai_used  else 'CV'
-        obj_note  = f'  Removed:{",".join(result.objects_removed)}' \
-                    if result.objects_removed else ''
+        cv2.rectangle(annotated, (0, 0), (w, 28), (20, 20, 20), -1)
+        crack_src = f'AI({int(self.AI_WEIGHT*100)}%)+CV({int(self.CV_WEIGHT*100)}%)' \
+                    if result.crack_ai_used else 'CV'
+        seep_src  = f'AI({int(self.AI_WEIGHT*100)}%)+CV({int(self.CV_WEIGHT*100)}%)' \
+                    if result.seep_ai_used  else 'CV'
         cv2.putText(
             annotated,
-            f'INFRA HEALTH MONITOR  Crack:{crack_src}  Seep:{seep_src}{obj_note}',
-            (8,18), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200,200,200), 1, cv2.LINE_AA
+            f'INFRA HEALTH MONITOR  Crack:{crack_src}  Seep:{seep_src}',
+            (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200,200,200), 1, cv2.LINE_AA
         )
         return annotated
 
     # ── Heatmap ───────────────────────────────────────────────────────────────
-
-    def _build_heatmap(self, gray, crack_mask, seep_mask):
+    def _build_heatmap(self, gray, crack_mask, seep_mask) -> np.ndarray:
         cf = crack_mask.astype(np.float32) / 255.0
         sf = seep_mask.astype(np.float32)  / 255.0
         sc = cv2.GaussianBlur(cf, (0,0), sigmaX=25)
@@ -480,7 +405,6 @@ class InfrastructureAnalyzer:
 
 
 # ── Health Scorer ─────────────────────────────────────────────────────────────
-
 class HealthScorer:
     MATERIAL_LIFETIMES = {
         'concrete':80, 'brick':100, 'steel':60,
@@ -503,8 +427,7 @@ class HealthScorer:
         if result.crack_spread > 0.7:        damage = min(10, damage + 0.8)
         if result.seep_area_pct > 15:        damage = min(10, damage + 0.6)
 
-        raw_health = max(0.0, 10.0 - damage)
-        health     = round(max(1.0, raw_health), 1)
+        health = round(max(1.5, 10.0 - damage), 1)
         report.health_score = health
 
         if   health >= 8.5: report.condition = 'Excellent'
@@ -517,12 +440,7 @@ class HealthScorer:
             report.critical  = True
 
         base = self.MATERIAL_LIFETIMES.get(material, 50)
-        norm = health / 10.0
-        if health >= 4.0:
-            life = base * (norm ** 1.4)
-        else:
-            life = base * (0.02 + (norm * 0.025))
-        report.estimated_life_years = round(max(1.0, life), 1)
+        report.estimated_life_years = round(max(base * (health/10.0)**1.5, 1))
 
         if result.crack_score > 5:
             report.warnings.append(
@@ -538,11 +456,6 @@ class HealthScorer:
         if result.largest_crack_mm_eq > 1.5:
             report.warnings.append(
                 f'Large crack ~{result.largest_crack_mm_eq} mm equivalent width'
-            )
-        if result.objects_removed:
-            report.warnings.append(
-                f'Objects detected and excluded before analysis: '
-                f'{", ".join(result.objects_removed)}'
             )
         if report.critical:
             report.warnings.insert(0, 'CRITICAL — Immediate structural inspection required!')
